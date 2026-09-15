@@ -1,715 +1,415 @@
-'use client'
+"use client";
 
-import { useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { useEffect, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 
 type Payment = {
-  id: string
-  payment_method: string
-  amount: number
-  payment_status: string
-  transaction_reference: string | null
-  paid_at: string | null
-  sales: {
-    invoice_number: string
-    total_amount: number
-  } | null
-}
+  id: string;
+  sale_id: string;
+  payment_method: string;
+  amount: number;
+  payment_status: string;
+  transaction_reference: string | null;
+  paid_at: string | null;
+  created_at: string;
+};
 
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '12px 14px',
-  border: '1px solid #cbd5e1',
-  borderRadius: '10px',
-  outline: 'none',
-  fontSize: '14px',
-  boxSizing: 'border-box',
-  background: '#ffffff',
-  color: '#0f172a',
-}
-
-const thStyle: React.CSSProperties = {
-  textAlign: 'left',
-  padding: '14px',
-  borderBottom: '1px solid #e2e8f0',
-  color: '#334155',
-  background: '#f8fafc',
-  fontSize: '13px',
-  fontWeight: 700,
-  whiteSpace: 'nowrap',
-}
-
-const tdStyle: React.CSSProperties = {
-  padding: '14px',
-  borderBottom: '1px solid #f1f5f9',
-  color: '#334155',
-  background: '#ffffff',
-  fontSize: '14px',
-}
+type Sale = {
+  id: string;
+  invoice_number: string;
+  total_amount: number;
+};
 
 export default function PaymentsPage() {
-  const supabase = createClient()
+  const [tenantId, setTenantId] = useState("");
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [sales, setSales] = useState<Sale[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
 
-  const [tenantId, setTenantId] = useState('')
-  const [payments, setPayments] = useState<Payment[]>([])
-  const [sales, setSales] = useState<
-    {
-      id: string
-      invoice_number: string
-      total_amount: number
-    }[]
-  >([])
-
-  const [saleId, setSaleId] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState('cash')
-  const [amount, setAmount] = useState(0)
-  const [paymentStatus, setPaymentStatus] = useState('paid')
-  const [transactionReference, setTransactionReference] = useState('')
-
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [message, setMessage] = useState('')
+  const [saleId, setSaleId] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("cash");
+  const [amount, setAmount] = useState("");
+  const [paymentStatus, setPaymentStatus] = useState("paid");
+  const [transactionReference, setTransactionReference] = useState("");
 
   useEffect(() => {
-    loadPayments()
-  }, [])
+    loadPayments();
+  }, []);
 
   async function loadPayments() {
-    setLoading(true)
-    setMessage('')
+    setLoading(true);
+    setMessage("");
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    try {
+      const supabase = createClient();
 
-    if (!user) {
-      window.location.href = '/login'
-      return
-    }
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-    const { data: profile, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('tenant_id')
-      .eq('id', user.id)
-      .single()
-
-    if (profileError || !profile) {
-      setMessage('Business profile not found.')
-      setLoading(false)
-      return
-    }
-
-    setTenantId(profile.tenant_id)
-
-    const [paymentsResult, salesResult] = await Promise.all([
-      supabase
-        .from('payments')
-        .select(
-          'id,payment_method,amount,payment_status,transaction_reference,paid_at,sales(invoice_number,total_amount)'
-        )
-        .eq('tenant_id', profile.tenant_id)
-        .order('paid_at', { ascending: false }),
-
-      supabase
-        .from('sales')
-        .select('id,invoice_number,total_amount')
-        .eq('tenant_id', profile.tenant_id)
-        .eq('status', 'completed')
-        .order('sale_date', { ascending: false }),
-    ])
-
-    if (paymentsResult.error) {
-      setMessage(paymentsResult.error.message)
-      setLoading(false)
-      return
-    }
-
-    if (salesResult.error) {
-      setMessage(salesResult.error.message)
-      setLoading(false)
-      return
-    }
-
-    const paymentData: Payment[] = (
-      paymentsResult.data ?? []
-    ).map((payment) => {
-      const saleRelation = Array.isArray(payment.sales)
-        ? payment.sales[0] ?? null
-        : payment.sales ?? null
-
-      return {
-        id: payment.id,
-        payment_method: payment.payment_method,
-        amount: Number(payment.amount ?? 0),
-        payment_status: payment.payment_status,
-        transaction_reference:
-          payment.transaction_reference ?? null,
-        paid_at: payment.paid_at ?? null,
-        sales: saleRelation,
+      if (!user) {
+        setMessage("Please login first.");
+        setLoading(false);
+        return;
       }
-    })
 
-    setPayments(paymentData)
-    setSales(
-      (salesResult.data ?? []).map((sale) => ({
-        id: sale.id,
-        invoice_number: sale.invoice_number,
-        total_amount: Number(sale.total_amount ?? 0),
-      }))
-    )
+      const { data: profile, error: profileError } = await supabase
+        .from("user_profiles")
+        .select("tenant_id")
+        .eq("id", user.id)
+        .single();
 
-    setLoading(false)
-  }
+      if (profileError || !profile?.tenant_id) {
+        setMessage("Tenant information not found.");
+        setLoading(false);
+        return;
+      }
 
-  function handleSaleChange(value: string) {
-    setSaleId(value)
+      setTenantId(profile.tenant_id);
 
-    const selectedSale = sales.find(
-      (sale) => sale.id === value
-    )
+      const { data: paymentData, error: paymentError } = await supabase
+        .from("payments")
+        .select(
+          "id, sale_id, payment_method, amount, payment_status, transaction_reference, paid_at, created_at"
+        )
+        .eq("tenant_id", profile.tenant_id)
+        .order("created_at", { ascending: false });
 
-    if (selectedSale) {
-      setAmount(Number(selectedSale.total_amount))
-    } else {
-      setAmount(0)
+      if (paymentError) {
+        throw paymentError;
+      }
+
+      const { data: salesData, error: salesError } = await supabase
+        .from("sales")
+        .select("id, invoice_number, total_amount")
+        .eq("tenant_id", profile.tenant_id)
+        .order("created_at", { ascending: false });
+
+      if (salesError) {
+        throw salesError;
+      }
+
+      setPayments((paymentData || []) as Payment[]);
+      setSales((salesData || []) as Sale[]);
+    } catch (error: any) {
+      console.error(error);
+      setMessage(error?.message || "Failed to load payments.");
+    } finally {
+      setLoading(false);
     }
   }
 
   async function addPayment(e: React.FormEvent) {
-    e.preventDefault()
+    e.preventDefault();
+    setMessage("");
 
-    if (!tenantId || !saleId) {
-      setMessage('Please select a sale.')
-      return
+    if (!saleId || !amount) {
+      setMessage("Please select a sale and enter amount.");
+      return;
     }
 
-    if (amount <= 0) {
-      setMessage('Payment amount must be greater than zero.')
-      return
+    const numericAmount = Number(amount);
+
+    if (numericAmount <= 0) {
+      setMessage("Amount must be greater than 0.");
+      return;
     }
 
-    setSaving(true)
-    setMessage('Saving payment...')
+    try {
+      const supabase = createClient();
 
-    const { error } = await supabase
-      .from('payments')
-      .insert({
+      const { error } = await supabase.from("payments").insert({
         tenant_id: tenantId,
         sale_id: saleId,
         payment_method: paymentMethod,
-        amount,
+        amount: numericAmount,
         payment_status: paymentStatus,
         transaction_reference:
           transactionReference.trim() || null,
-        paid_at:
-          paymentStatus === 'paid'
-            ? new Date().toISOString()
-            : null,
-      })
+        paid_at: paymentStatus === "paid" ? new Date().toISOString() : null,
+      });
 
-    if (error) {
-      setMessage(error.message)
-      setSaving(false)
-      return
+      if (error) {
+        throw error;
+      }
+
+      setMessage("Payment added successfully.");
+
+      setSaleId("");
+      setPaymentMethod("cash");
+      setAmount("");
+      setPaymentStatus("paid");
+      setTransactionReference("");
+
+      await loadPayments();
+    } catch (error: any) {
+      console.error(error);
+      setMessage(error?.message || "Failed to add payment.");
     }
+  }
 
-    setSaleId('')
-    setPaymentMethod('cash')
-    setAmount(0)
-    setPaymentStatus('paid')
-    setTransactionReference('')
-
-    setMessage('Payment added successfully!')
-
-    await loadPayments()
-
-    setSaving(false)
+  function getInvoiceNumber(saleId: string) {
+    const sale = sales.find((item) => item.id === saleId);
+    return sale?.invoice_number || saleId.slice(0, 8);
   }
 
   const totalPaid = payments
-    .filter((payment) => payment.payment_status === 'paid')
-    .reduce(
-      (sum, payment) => sum + Number(payment.amount || 0),
-      0
-    )
+    .filter((payment) => payment.payment_status === "paid")
+    .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
 
   const pendingAmount = payments
-    .filter(
-      (payment) => payment.payment_status === 'pending'
-    )
-    .reduce(
-      (sum, payment) => sum + Number(payment.amount || 0),
-      0
-    )
+    .filter((payment) => payment.payment_status !== "paid")
+    .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
 
   return (
-    <main
-      style={{
-        minHeight: '100vh',
-        background: '#f1f5f9',
-        padding: '32px 20px',
-        color: '#0f172a',
-      }}
-    >
-      <div
-        style={{
-          maxWidth: '1200px',
-          margin: '0 auto',
-        }}
-      >
-        <div style={{ marginBottom: '28px' }}>
-          <div
-            style={{
-              display: 'inline-block',
-              padding: '6px 12px',
-              borderRadius: '999px',
-              background: '#dbeafe',
-              color: '#1d4ed8',
-              fontSize: '12px',
-              fontWeight: 700,
-              marginBottom: '10px',
-            }}
-          >
-            PAYMENT MANAGEMENT
-          </div>
-
-          <h1
-            style={{
-              margin: 0,
-              fontSize: '32px',
-              fontWeight: 800,
-              color: '#0f172a',
-            }}
-          >
+    <main className="min-h-screen bg-slate-50 p-4 text-slate-900 md:p-8">
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold tracking-tight">
             Payments
           </h1>
-
-          <p
-            style={{
-              marginTop: '8px',
-              color: '#475569',
-              fontSize: '15px',
-            }}
-          >
-            Track customer payments and transaction status.
+          <p className="mt-1 text-sm text-slate-500">
+            Manage customer payments and payment records.
           </p>
         </div>
 
-        <section
-          style={{
-            display: 'grid',
-            gridTemplateColumns:
-              'repeat(auto-fit, minmax(220px, 1fr))',
-            gap: '16px',
-            marginBottom: '24px',
-          }}
-        >
-          <div
-            style={{
-              background: '#ffffff',
-              padding: '20px',
-              borderRadius: '16px',
-              border: '1px solid #e2e8f0',
-            }}
-          >
-            <div
-              style={{
-                color: '#64748b',
-                fontSize: '13px',
-                fontWeight: 600,
-              }}
-            >
-              Total Paid
-            </div>
+        {message && (
+          <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4 text-sm shadow-sm">
+            {message}
+          </div>
+        )}
 
-            <div
-              style={{
-                marginTop: '8px',
-                fontSize: '26px',
-                fontWeight: 800,
-                color: '#166534',
-              }}
-            >
+        <section className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-sm text-slate-500">Total Paid</p>
+            <p className="mt-2 text-2xl font-bold text-emerald-600">
               ₹{totalPaid.toFixed(2)}
-            </div>
+            </p>
           </div>
 
-          <div
-            style={{
-              background: '#ffffff',
-              padding: '20px',
-              borderRadius: '16px',
-              border: '1px solid #e2e8f0',
-            }}
-          >
-            <div
-              style={{
-                color: '#64748b',
-                fontSize: '13px',
-                fontWeight: 600,
-              }}
-            >
-              Pending Amount
-            </div>
-
-            <div
-              style={{
-                marginTop: '8px',
-                fontSize: '26px',
-                fontWeight: 800,
-                color: '#b45309',
-              }}
-            >
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-sm text-slate-500">Pending</p>
+            <p className="mt-2 text-2xl font-bold text-orange-600">
               ₹{pendingAmount.toFixed(2)}
-            </div>
+            </p>
           </div>
 
-          <div
-            style={{
-              background: '#ffffff',
-              padding: '20px',
-              borderRadius: '16px',
-              border: '1px solid #e2e8f0',
-            }}
-          >
-            <div
-              style={{
-                color: '#64748b',
-                fontSize: '13px',
-                fontWeight: 600,
-              }}
-            >
-              Transactions
-            </div>
-
-            <div
-              style={{
-                marginTop: '8px',
-                fontSize: '26px',
-                fontWeight: 800,
-                color: '#0f172a',
-              }}
-            >
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-sm text-slate-500">Payment Records</p>
+            <p className="mt-2 text-2xl font-bold">
               {payments.length}
-            </div>
+            </p>
           </div>
         </section>
 
-        <section
-          style={{
-            background: '#ffffff',
-            padding: '24px',
-            borderRadius: '16px',
-            border: '1px solid #e2e8f0',
-            marginBottom: '24px',
-            boxShadow: '0 4px 16px rgba(15,23,42,0.05)',
-          }}
-        >
-          <h2
-            style={{
-              margin: '0 0 20px',
-              fontSize: '20px',
-              fontWeight: 700,
-              color: '#0f172a',
-            }}
-          >
+        <section className="mb-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+          <h2 className="mb-5 text-xl font-semibold">
             Add Payment
           </h2>
 
-          {loading ? (
-            <div
-              style={{
-                padding: '20px',
-                color: '#475569',
-              }}
-            >
-              Loading payments...
-            </div>
-          ) : (
-            <form onSubmit={addPayment}>
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns:
-                    'repeat(auto-fit, minmax(220px, 1fr))',
-                  gap: '16px',
-                }}
-              >
-                <select
-                  value={saleId}
-                  onChange={(e) =>
-                    handleSaleChange(e.target.value)
-                  }
-                  style={inputStyle}
-                  required
-                >
-                  <option value="">Select Sale *</option>
-
-                  {sales.map((sale) => (
-                    <option key={sale.id} value={sale.id}>
-                      {sale.invoice_number} — ₹
-                      {Number(sale.total_amount).toFixed(2)}
-                    </option>
-                  ))}
-                </select>
-
-                <select
-                  value={paymentMethod}
-                  onChange={(e) =>
-                    setPaymentMethod(e.target.value)
-                  }
-                  style={inputStyle}
-                >
-                  <option value="cash">Cash</option>
-                  <option value="upi">UPI</option>
-                  <option value="card">Card</option>
-                  <option value="bank_transfer">
-                    Bank Transfer
-                  </option>
-                  <option value="other">Other</option>
-                </select>
-
-                <input
-                  type="number"
-                  value={amount}
-                  onChange={(e) =>
-                    setAmount(Number(e.target.value))
-                  }
-                  min="0.01"
-                  step="0.01"
-                  placeholder="Amount"
-                  style={inputStyle}
-                  required
-                />
-
-                <select
-                  value={paymentStatus}
-                  onChange={(e) =>
-                    setPaymentStatus(e.target.value)
-                  }
-                  style={inputStyle}
-                >
-                  <option value="paid">Paid</option>
-                  <option value="pending">Pending</option>
-                  <option value="failed">Failed</option>
-                  <option value="refunded">Refunded</option>
-                </select>
-
-                <input
-                  placeholder="Transaction Reference"
-                  value={transactionReference}
-                  onChange={(e) =>
-                    setTransactionReference(e.target.value)
-                  }
-                  style={inputStyle}
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={saving}
-                style={{
-                  marginTop: '20px',
-                  background: saving
-                    ? '#94a3b8'
-                    : '#2563eb',
-                  color: '#ffffff',
-                  border: 'none',
-                  padding: '12px 22px',
-                  borderRadius: '10px',
-                  fontWeight: 700,
-                  cursor: saving
-                    ? 'not-allowed'
-                    : 'pointer',
-                }}
-              >
-                {saving ? 'Saving...' : '+ Add Payment'}
-              </button>
-            </form>
-          )}
-
-          {message && (
-            <div
-              style={{
-                marginTop: '16px',
-                padding: '12px 14px',
-                background: '#f8fafc',
-                border: '1px solid #e2e8f0',
-                borderRadius: '10px',
-                color: '#334155',
-                fontSize: '14px',
-              }}
-            >
-              {message}
-            </div>
-          )}
-        </section>
-
-        <section
-          style={{
-            background: '#ffffff',
-            padding: '24px',
-            borderRadius: '16px',
-            border: '1px solid #e2e8f0',
-            boxShadow: '0 4px 16px rgba(15,23,42,0.05)',
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: '20px',
-              gap: '12px',
-              flexWrap: 'wrap',
-            }}
+          <form
+            onSubmit={addPayment}
+            className="grid gap-4 md:grid-cols-2 lg:grid-cols-3"
           >
             <div>
-              <h2
-                style={{
-                  margin: 0,
-                  fontSize: '20px',
-                  fontWeight: 700,
-                  color: '#0f172a',
-                }}
-              >
-                Payment History
-              </h2>
+              <label className="mb-1 block text-sm font-medium">
+                Sale / Invoice
+              </label>
 
-              <p
-                style={{
-                  margin: '5px 0 0',
-                  color: '#64748b',
-                  fontSize: '13px',
+              <select
+                value={saleId}
+                onChange={(e) => {
+                  setSaleId(e.target.value);
+
+                  const selectedSale = sales.find(
+                    (sale) => sale.id === e.target.value
+                  );
+
+                  if (selectedSale) {
+                    setAmount(String(selectedSale.total_amount));
+                  }
                 }}
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-slate-900 outline-none focus:border-blue-500"
               >
-                Complete payment transaction history
-              </p>
+                <option value="">Select sale</option>
+
+                {sales.map((sale) => (
+                  <option key={sale.id} value={sale.id}>
+                    {sale.invoice_number} — ₹
+                    {Number(sale.total_amount).toFixed(2)}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            <button
-              type="button"
-              onClick={loadPayments}
-              style={{
-                padding: '9px 16px',
-                borderRadius: '9px',
-                border: '1px solid #cbd5e1',
-                background: '#ffffff',
-                color: '#0f172a',
-                cursor: 'pointer',
-                fontWeight: 600,
-              }}
-            >
-              Refresh
-            </button>
+            <div>
+              <label className="mb-1 block text-sm font-medium">
+                Payment Method
+              </label>
+
+              <select
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value)}
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-slate-900 outline-none focus:border-blue-500"
+              >
+                <option value="cash">Cash</option>
+                <option value="upi">UPI</option>
+                <option value="card">Card</option>
+                <option value="bank_transfer">
+                  Bank Transfer
+                </option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm font-medium">
+                Amount
+              </label>
+
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="Enter amount"
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm font-medium">
+                Payment Status
+              </label>
+
+              <select
+                value={paymentStatus}
+                onChange={(e) => setPaymentStatus(e.target.value)}
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-slate-900 outline-none focus:border-blue-500"
+              >
+                <option value="paid">Paid</option>
+                <option value="pending">Pending</option>
+                <option value="failed">Failed</option>
+                <option value="refunded">Refunded</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm font-medium">
+                Transaction Reference
+              </label>
+
+              <input
+                type="text"
+                value={transactionReference}
+                onChange={(e) =>
+                  setTransactionReference(e.target.value)
+                }
+                placeholder="UPI / transaction ID"
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500"
+              />
+            </div>
+
+            <div className="flex items-end">
+              <button
+                type="submit"
+                className="w-full rounded-xl bg-slate-900 px-5 py-2.5 font-semibold text-white transition hover:bg-slate-800"
+              >
+                Add Payment
+              </button>
+            </div>
+          </form>
+        </section>
+
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-200 p-5">
+            <h2 className="text-xl font-semibold">
+              Payment History
+            </h2>
           </div>
 
-          {payments.length === 0 ? (
-            <div
-              style={{
-                padding: '30px',
-                textAlign: 'center',
-                background: '#f8fafc',
-                borderRadius: '12px',
-                color: '#475569',
-              }}
-            >
-              No payments found.
+          {loading ? (
+            <div className="p-8 text-center text-slate-500">
+              Loading payments...
+            </div>
+          ) : payments.length === 0 ? (
+            <div className="p-8 text-center text-slate-500">
+              No payment records found.
             </div>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table
-                style={{
-                  width: '100%',
-                  borderCollapse: 'collapse',
-                  minWidth: '900px',
-                }}
-              >
-                <thead>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[850px] text-left text-sm">
+                <thead className="bg-slate-50 text-slate-600">
                   <tr>
-                    <th style={thStyle}>Invoice</th>
-                    <th style={thStyle}>Sale Amount</th>
-                    <th style={thStyle}>Payment</th>
-                    <th style={thStyle}>Amount Paid</th>
-                    <th style={thStyle}>Status</th>
-                    <th style={thStyle}>Reference</th>
-                    <th style={thStyle}>Paid At</th>
+                    <th className="px-5 py-3 font-semibold">
+                      Invoice
+                    </th>
+                    <th className="px-5 py-3 font-semibold">
+                      Method
+                    </th>
+                    <th className="px-5 py-3 font-semibold">
+                      Amount
+                    </th>
+                    <th className="px-5 py-3 font-semibold">
+                      Status
+                    </th>
+                    <th className="px-5 py-3 font-semibold">
+                      Reference
+                    </th>
+                    <th className="px-5 py-3 font-semibold">
+                      Paid At
+                    </th>
                   </tr>
                 </thead>
 
-                <tbody>
+                <tbody className="divide-y divide-slate-100">
                   {payments.map((payment) => (
-                    <tr key={payment.id}>
-                      <td style={tdStyle}>
-                        <strong
-                          style={{ color: '#0f172a' }}
-                        >
-                          {payment.sales?.invoice_number || '-'}
-                        </strong>
+                    <tr
+                      key={payment.id}
+                      className="hover:bg-slate-50"
+                    >
+                      <td className="px-5 py-4 font-medium">
+                        {getInvoiceNumber(payment.sale_id)}
                       </td>
 
-                      <td style={tdStyle}>
-                        ₹
-                        {Number(
-                          payment.sales?.total_amount || 0
-                        ).toFixed(2)}
+                      <td className="px-5 py-4 capitalize">
+                        {payment.payment_method.replace(
+                          "_",
+                          " "
+                        )}
                       </td>
 
-                      <td style={tdStyle}>
-                        {payment.payment_method}
-                      </td>
-
-                      <td
-                        style={{
-                          ...tdStyle,
-                          fontWeight: 700,
-                          color: '#166534',
-                        }}
-                      >
+                      <td className="px-5 py-4 font-semibold">
                         ₹{Number(payment.amount).toFixed(2)}
                       </td>
 
-                      <td style={tdStyle}>
+                      <td className="px-5 py-4">
                         <span
-                          style={{
-                            display: 'inline-block',
-                            padding: '5px 10px',
-                            borderRadius: '999px',
-                            background:
-                              payment.payment_status ===
-                              'paid'
-                                ? '#dcfce7'
-                                : payment.payment_status ===
-                                    'pending'
-                                  ? '#fef3c7'
-                                  : '#fee2e2',
-                            color:
-                              payment.payment_status ===
-                              'paid'
-                                ? '#166534'
-                                : payment.payment_status ===
-                                    'pending'
-                                  ? '#92400e'
-                                  : '#991b1b',
-                            fontWeight: 700,
-                            fontSize: '12px',
-                          }}
+                          className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                            payment.payment_status === "paid"
+                              ? "bg-emerald-100 text-emerald-700"
+                              : payment.payment_status ===
+                                "pending"
+                              ? "bg-orange-100 text-orange-700"
+                              : "bg-red-100 text-red-700"
+                          }`}
                         >
                           {payment.payment_status}
                         </span>
                       </td>
 
-                      <td style={tdStyle}>
-                        {payment.transaction_reference ||
-                          '-'}
+                      <td className="px-5 py-4 text-slate-500">
+                        {payment.transaction_reference || "—"}
                       </td>
 
-                      <td style={tdStyle}>
+                      <td className="px-5 py-4 text-slate-500">
                         {payment.paid_at
                           ? new Date(
                               payment.paid_at
                             ).toLocaleString()
-                          : '-'}
+                          : "—"}
                       </td>
                     </tr>
                   ))}
@@ -720,5 +420,5 @@ export default function PaymentsPage() {
         </section>
       </div>
     </main>
-  )
+  );
 }

@@ -1,57 +1,80 @@
-"use client";
+"use client"
 
-import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useEffect, useState } from "react"
+import { createClient } from "@/lib/supabase/client"
+
+type ReportData = {
+  salesCount: number
+  revenue: number
+  expenses: number
+  purchases: number
+  products: number
+  customers: number
+  lowStock: number
+  profit: number
+}
 
 export default function ReportsPage() {
-  const supabase = createClient();
+  const [data, setData] = useState<ReportData>({
+    salesCount: 0,
+    revenue: 0,
+    expenses: 0,
+    purchases: 0,
+    products: 0,
+    customers: 0,
+    lowStock: 0,
+    profit: 0,
+  })
 
-  const [loading, setLoading] = useState(true);
-  const [revenue, setRevenue] = useState(0);
-  const [expenses, setExpenses] = useState(0);
-  const [salesCount, setSalesCount] = useState(0);
-  const [returns, setReturns] = useState(0);
-  const [products, setProducts] = useState(0);
-  const [stockUnits, setStockUnits] = useState(0);
-  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
 
-  const loadReport = async () => {
-    setLoading(true);
-    setError("");
+  useEffect(() => {
+    loadReports()
+  }, [])
 
+  async function loadReports() {
     try {
+      setLoading(true)
+      setError("")
+
+      const supabase = createClient()
+
       const {
         data: { user },
-      } = await supabase.auth.getUser();
+      } = await supabase.auth.getUser()
 
       if (!user) {
-        setError("Please login first.");
-        return;
+        setError("Please login to view reports.")
+        return
       }
 
       const { data: profile, error: profileError } = await supabase
         .from("user_profiles")
         .select("tenant_id")
         .eq("id", user.id)
-        .single();
+        .single()
 
-      if (profileError || !profile) {
-        throw new Error("Tenant profile not found.");
+      if (profileError || !profile?.tenant_id) {
+        setError("Business profile not found.")
+        return
       }
 
-      const tenantId = profile.tenant_id;
+      const tenantId = profile.tenant_id
 
       const [
         salesResult,
         expensesResult,
-        returnsResult,
+        purchasesResult,
         productsResult,
-        movementsResult,
+        customersResult,
+        stockResult,
       ] = await Promise.all([
         supabase
           .from("sales")
-          .select("total_amount, status")
-          .eq("tenant_id", tenantId),
+          .select("id,total_amount")
+          .eq("tenant_id", tenantId)
+          .eq("status", "completed"),
 
         supabase
           .from("expenses")
@@ -59,407 +82,413 @@ export default function ReportsPage() {
           .eq("tenant_id", tenantId),
 
         supabase
-          .from("returns")
-          .select("total_amount, status")
+          .from("purchases")
+          .select("total_amount")
           .eq("tenant_id", tenantId),
 
         supabase
           .from("products")
-          .select("id")
+          .select("id,reorder_level")
           .eq("tenant_id", tenantId)
           .eq("is_active", true),
 
         supabase
-          .from("stock_movements")
-          .select("product_id, quantity")
+          .from("customers")
+          .select("id")
           .eq("tenant_id", tenantId),
-      ]);
 
-      if (salesResult.error) throw salesResult.error;
-      if (expensesResult.error) throw expensesResult.error;
-      if (returnsResult.error) throw returnsResult.error;
-      if (productsResult.error) throw productsResult.error;
-      if (movementsResult.error) throw movementsResult.error;
+        supabase
+          .from("stock_movements")
+          .select("product_id,quantity")
+          .eq("tenant_id", tenantId),
+      ])
 
-      const completedSales = salesResult.data?.filter(
-        (sale) => sale.status === "completed"
-      ) || [];
+      if (salesResult.error) throw salesResult.error
+      if (expensesResult.error) throw expensesResult.error
+      if (purchasesResult.error) throw purchasesResult.error
+      if (productsResult.error) throw productsResult.error
+      if (customersResult.error) throw customersResult.error
+      if (stockResult.error) throw stockResult.error
 
-      const totalRevenue = completedSales.reduce(
+      const sales = salesResult.data || []
+      const expenses = expensesResult.data || []
+      const purchases = purchasesResult.data || []
+      const products = productsResult.data || []
+      const customers = customersResult.data || []
+      const movements = stockResult.data || []
+
+      const revenue = sales.reduce(
         (sum, sale) => sum + Number(sale.total_amount || 0),
         0
-      );
+      )
 
-      const totalExpenses =
-        expensesResult.data?.reduce(
-          (sum, expense) => sum + Number(expense.amount || 0),
-          0
-        ) || 0;
-
-      const totalReturns =
-        returnsResult.data
-          ?.filter((item) => item.status === "completed")
-          .reduce(
-            (sum, item) => sum + Number(item.total_amount || 0),
-            0
-          ) || 0;
-
-      const stockMap: Record<string, number> = {};
-
-      movementsResult.data?.forEach((movement) => {
-        stockMap[movement.product_id] =
-          (stockMap[movement.product_id] || 0) +
-          Number(movement.quantity || 0);
-      });
-
-      const currentStock = Object.values(stockMap).reduce(
-        (sum, quantity) => sum + quantity,
+      const expenseTotal = expenses.reduce(
+        (sum, expense) => sum + Number(expense.amount || 0),
         0
-      );
+      )
 
-      setRevenue(totalRevenue);
-      setExpenses(totalExpenses);
-      setReturns(totalReturns);
-      setSalesCount(completedSales.length);
-      setProducts(productsResult.data?.length || 0);
-      setStockUnits(currentStock);
-    } catch (err: any) {
-      setError(err.message || "Unable to load report.");
+      const purchaseTotal = purchases.reduce(
+        (sum, purchase) => sum + Number(purchase.total_amount || 0),
+        0
+      )
+
+      const stockMap: Record<string, number> = {}
+
+      for (const movement of movements) {
+        const productId = movement.product_id
+
+        if (!stockMap[productId]) {
+          stockMap[productId] = 0
+        }
+
+        stockMap[productId] += Number(movement.quantity || 0)
+      }
+
+      const lowStock = products.filter((product) => {
+        const currentStock = stockMap[product.id] || 0
+        return currentStock <= Number(product.reorder_level || 0)
+      }).length
+
+      const profit = revenue - purchaseTotal - expenseTotal
+
+      setData({
+        salesCount: sales.length,
+        revenue,
+        expenses: expenseTotal,
+        purchases: purchaseTotal,
+        products: products.length,
+        customers: customers.length,
+        lowStock,
+        profit,
+      })
+    } catch (err) {
+      console.error(err)
+      setError("Unable to load reports.")
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
-  useEffect(() => {
-    loadReport();
-  }, []);
-
-  const netPosition = revenue - expenses - returns;
+  function formatCurrency(value: number) {
+    return `₹${value.toLocaleString("en-IN", {
+      maximumFractionDigits: 2,
+    })}`
+  }
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: "#f8fafc",
-        color: "#0f172a",
-        padding: "32px",
-      }}
-    >
-      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
-        {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: "20px",
-            flexWrap: "wrap",
-            marginBottom: "28px",
-          }}
-        >
-          <div>
-            <div
-              style={{
-                display: "inline-block",
-                background: "#dbeafe",
-                color: "#1d4ed8",
-                padding: "6px 12px",
-                borderRadius: "999px",
-                fontSize: "13px",
-                fontWeight: 700,
-                marginBottom: "10px",
-              }}
-            >
-              BUSINESS ANALYTICS
-            </div>
+    <main className="min-h-screen bg-slate-950 text-white">
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
 
-            <h1
-              style={{
-                margin: 0,
-                fontSize: "32px",
-                fontWeight: 800,
-              }}
-            >
-              Reports 📊
+        {/* Header */}
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-medium text-cyan-400">
+              BUSINESS ANALYTICS
+            </p>
+
+            <h1 className="mt-1 text-3xl font-bold tracking-tight">
+              Reports
             </h1>
 
-            <p
-              style={{
-                marginTop: "8px",
-                color: "#64748b",
-                fontSize: "15px",
-              }}
-            >
-              Real-time business performance from your RetailPilot database.
+            <p className="mt-2 text-sm text-slate-400">
+              Real-time business performance and operational overview.
             </p>
           </div>
 
           <button
-            onClick={loadReport}
-            style={{
-              border: "none",
-              borderRadius: "10px",
-              padding: "13px 20px",
-              background: "#2563eb",
-              color: "white",
-              fontWeight: 700,
-              cursor: "pointer",
-            }}
+            onClick={loadReports}
+            className="rounded-xl border border-slate-700 bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
           >
-            ↻ Refresh Report
+            Refresh Reports
           </button>
         </div>
 
-        {/* Disclaimer */}
-        <div
-          style={{
-            background: "#fff7ed",
-            border: "1px solid #fed7aa",
-            borderRadius: "12px",
-            padding: "14px 16px",
-            marginBottom: "24px",
-            color: "#9a3412",
-            fontSize: "13px",
-          }}
-        >
-          <strong>AI-generated recommendation:</strong> Financial insights
-          should be verified against accounting records before making business
-          decisions.
-        </div>
-
+        {/* Error */}
         {error && (
-          <div
-            style={{
-              background: "#fef2f2",
-              color: "#b91c1c",
-              border: "1px solid #fecaca",
-              borderRadius: "12px",
-              padding: "16px",
-              marginBottom: "24px",
-            }}
-          >
+          <div className="mb-6 rounded-xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-300">
             {error}
           </div>
         )}
 
+        {/* Loading */}
         {loading ? (
-          <div
-            style={{
-              background: "white",
-              borderRadius: "16px",
-              padding: "50px",
-              textAlign: "center",
-            }}
-          >
-            📊 Generating business report...
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-10 text-center">
+            <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-slate-600 border-t-cyan-400" />
+            <p className="text-slate-400">
+              Loading live business reports...
+            </p>
           </div>
         ) : (
           <>
             {/* KPI Cards */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns:
-                  "repeat(auto-fit, minmax(210px, 1fr))",
-                gap: "18px",
-                marginBottom: "28px",
-              }}
-            >
-              {[
-                ["💰", "Total Revenue", `₹${revenue.toFixed(2)}`],
-                ["🧾", "Completed Sales", salesCount.toString()],
-                ["💸", "Expenses", `₹${expenses.toFixed(2)}`],
-                ["↩️", "Returns", `₹${returns.toFixed(2)}`],
-                ["📦", "Active Products", products.toString()],
-                ["🏪", "Current Stock", `${stockUnits} units`],
-              ].map(([icon, title, value]) => (
-                <div
-                  key={title}
-                  style={{
-                    background: "white",
-                    border: "1px solid #e2e8f0",
-                    borderRadius: "16px",
-                    padding: "22px",
-                    boxShadow: "0 4px 18px rgba(15,23,42,0.06)",
-                  }}
+            <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+
+              <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+                <p className="text-sm text-slate-400">Total Revenue</p>
+                <p className="mt-2 text-3xl font-bold">
+                  {formatCurrency(data.revenue)}
+                </p>
+                <p className="mt-2 text-xs text-emerald-400">
+                  Completed sales
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+                <p className="text-sm text-slate-400">Estimated Profit</p>
+                <p
+                  className={`mt-2 text-3xl font-bold ${
+                    data.profit >= 0
+                      ? "text-emerald-400"
+                      : "text-red-400"
+                  }`}
                 >
-                  <div style={{ fontSize: "26px" }}>{icon}</div>
+                  {formatCurrency(data.profit)}
+                </p>
+                <p className="mt-2 text-xs text-slate-500">
+                  Revenue − purchases − expenses
+                </p>
+              </div>
 
-                  <div
-                    style={{
-                      color: "#64748b",
-                      fontSize: "13px",
-                      fontWeight: 600,
-                      marginTop: "14px",
-                    }}
-                  >
-                    {title}
-                  </div>
+              <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+                <p className="text-sm text-slate-400">Total Expenses</p>
+                <p className="mt-2 text-3xl font-bold text-orange-400">
+                  {formatCurrency(data.expenses)}
+                </p>
+                <p className="mt-2 text-xs text-slate-500">
+                  Recorded business expenses
+                </p>
+              </div>
 
-                  <div
-                    style={{
-                      fontSize: "25px",
-                      fontWeight: 800,
-                      marginTop: "6px",
-                    }}
-                  >
-                    {value}
-                  </div>
-                </div>
-              ))}
-            </div>
+              <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+                <p className="text-sm text-slate-400">Purchases</p>
+                <p className="mt-2 text-3xl font-bold text-blue-400">
+                  {formatCurrency(data.purchases)}
+                </p>
+                <p className="mt-2 text-xs text-slate-500">
+                  Purchase records
+                </p>
+              </div>
 
-            {/* Financial Summary */}
-            <section
-              style={{
-                background: "white",
-                border: "1px solid #e2e8f0",
-                borderRadius: "16px",
-                padding: "24px",
-                marginBottom: "24px",
-                boxShadow: "0 4px 18px rgba(15,23,42,0.06)",
-              }}
-            >
-              <h2
-                style={{
-                  margin: "0 0 20px",
-                  fontSize: "20px",
-                  fontWeight: 800,
-                }}
-              >
-                Financial Summary
+            </section>
+
+            {/* Operational Summary */}
+            <section className="mt-6">
+              <h2 className="mb-4 text-xl font-semibold">
+                Operational Summary
               </h2>
 
-              <div
-                style={{
-                  display: "grid",
-                  gap: "12px",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    padding: "14px",
-                    background: "#f8fafc",
-                    borderRadius: "10px",
-                  }}
-                >
-                  <span>Total Revenue</span>
-                  <strong>₹{revenue.toFixed(2)}</strong>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+
+                <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+                  <p className="text-sm text-slate-400">
+                    Completed Sales
+                  </p>
+
+                  <p className="mt-2 text-3xl font-bold">
+                    {data.salesCount}
+                  </p>
+
+                  <p className="mt-2 text-xs text-slate-500">
+                    Successful transactions
+                  </p>
                 </div>
 
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    padding: "14px",
-                    background: "#f8fafc",
-                    borderRadius: "10px",
-                  }}
-                >
-                  <span>Less: Expenses</span>
-                  <strong>₹{expenses.toFixed(2)}</strong>
+                <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+                  <p className="text-sm text-slate-400">
+                    Active Products
+                  </p>
+
+                  <p className="mt-2 text-3xl font-bold">
+                    {data.products}
+                  </p>
+
+                  <p className="mt-2 text-xs text-slate-500">
+                    Products currently active
+                  </p>
                 </div>
 
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    padding: "14px",
-                    background: "#f8fafc",
-                    borderRadius: "10px",
-                  }}
-                >
-                  <span>Less: Returns</span>
-                  <strong>₹{returns.toFixed(2)}</strong>
+                <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+                  <p className="text-sm text-slate-400">
+                    Customers
+                  </p>
+
+                  <p className="mt-2 text-3xl font-bold">
+                    {data.customers}
+                  </p>
+
+                  <p className="mt-2 text-xs text-slate-500">
+                    Registered customers
+                  </p>
                 </div>
 
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    padding: "16px",
-                    background: "#eff6ff",
-                    borderRadius: "10px",
-                    fontSize: "17px",
-                  }}
-                >
-                  <strong>Net Position</strong>
-                  <strong>₹{netPosition.toFixed(2)}</strong>
+                <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+                  <p className="text-sm text-slate-400">
+                    Low Stock Items
+                  </p>
+
+                  <p
+                    className={`mt-2 text-3xl font-bold ${
+                      data.lowStock > 0
+                        ? "text-red-400"
+                        : "text-emerald-400"
+                    }`}
+                  >
+                    {data.lowStock}
+                  </p>
+
+                  <p className="mt-2 text-xs text-slate-500">
+                    Reorder attention required
+                  </p>
                 </div>
+
               </div>
             </section>
 
-            {/* Report Insights */}
-            <section
-              style={{
-                background: "white",
-                border: "1px solid #e2e8f0",
-                borderRadius: "16px",
-                padding: "24px",
-                boxShadow: "0 4px 18px rgba(15,23,42,0.06)",
-              }}
-            >
-              <h2
-                style={{
-                  margin: "0 0 8px",
-                  fontSize: "20px",
-                  fontWeight: 800,
-                }}
-              >
-                📌 Report Insights
+            {/* Financial Overview */}
+            <section className="mt-6 rounded-2xl border border-slate-800 bg-slate-900 p-6">
+              <h2 className="text-xl font-semibold">
+                Financial Overview
               </h2>
 
-              <p
-                style={{
-                  color: "#64748b",
-                  fontSize: "14px",
-                  marginBottom: "20px",
-                }}
-              >
-                Key observations from the current database.
+              <div className="mt-6 space-y-5">
+
+                <div>
+                  <div className="mb-2 flex justify-between text-sm">
+                    <span className="text-slate-400">
+                      Revenue
+                    </span>
+
+                    <span className="font-semibold">
+                      {formatCurrency(data.revenue)}
+                    </span>
+                  </div>
+
+                  <div className="h-3 overflow-hidden rounded-full bg-slate-800">
+                    <div
+                      className="h-full rounded-full bg-emerald-500"
+                      style={{
+                        width: `${
+                          data.revenue > 0 ? 100 : 0
+                        }%`,
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-2 flex justify-between text-sm">
+                    <span className="text-slate-400">
+                      Purchases
+                    </span>
+
+                    <span className="font-semibold">
+                      {formatCurrency(data.purchases)}
+                    </span>
+                  </div>
+
+                  <div className="h-3 overflow-hidden rounded-full bg-slate-800">
+                    <div
+                      className="h-full rounded-full bg-blue-500"
+                      style={{
+                        width: `${
+                          data.revenue > 0
+                            ? Math.min(
+                                (data.purchases / data.revenue) * 100,
+                                100
+                              )
+                            : 0
+                        }%`,
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-2 flex justify-between text-sm">
+                    <span className="text-slate-400">
+                      Expenses
+                    </span>
+
+                    <span className="font-semibold">
+                      {formatCurrency(data.expenses)}
+                    </span>
+                  </div>
+
+                  <div className="h-3 overflow-hidden rounded-full bg-slate-800">
+                    <div
+                      className="h-full rounded-full bg-orange-500"
+                      style={{
+                        width: `${
+                          data.revenue > 0
+                            ? Math.min(
+                                (data.expenses / data.revenue) * 100,
+                                100
+                              )
+                            : 0
+                        }%`,
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-2 flex justify-between text-sm">
+                    <span className="text-slate-400">
+                      Estimated Profit
+                    </span>
+
+                    <span
+                      className={`font-semibold ${
+                        data.profit >= 0
+                          ? "text-emerald-400"
+                          : "text-red-400"
+                      }`}
+                    >
+                      {formatCurrency(data.profit)}
+                    </span>
+                  </div>
+
+                  <div className="h-3 overflow-hidden rounded-full bg-slate-800">
+                    <div
+                      className={`h-full rounded-full ${
+                        data.profit >= 0
+                          ? "bg-emerald-500"
+                          : "bg-red-500"
+                      }`}
+                      style={{
+                        width: `${
+                          data.revenue > 0
+                            ? Math.min(
+                                Math.abs(data.profit / data.revenue) *
+                                  100,
+                                100
+                              )
+                            : 0
+                        }%`,
+                      }}
+                    />
+                  </div>
+                </div>
+
+              </div>
+            </section>
+
+            {/* AI Disclaimer */}
+            <div className="mt-6 rounded-2xl border border-cyan-900/50 bg-cyan-950/20 p-5">
+              <p className="text-sm font-semibold text-cyan-300">
+                AI-generated recommendation
               </p>
 
-              <div style={{ display: "grid", gap: "12px" }}>
-                <div
-                  style={{
-                    padding: "16px",
-                    background: "#f8fafc",
-                    borderRadius: "10px",
-                  }}
-                >
-                  <strong>Sales:</strong> {salesCount} completed sale
-                  {salesCount !== 1 ? "s" : ""} recorded.
-                </div>
-
-                <div
-                  style={{
-                    padding: "16px",
-                    background: "#f8fafc",
-                    borderRadius: "10px",
-                  }}
-                >
-                  <strong>Inventory:</strong> {stockUnits} units are currently
-                  represented in the stock movement ledger.
-                </div>
-
-                <div
-                  style={{
-                    padding: "16px",
-                    background: "#f8fafc",
-                    borderRadius: "10px",
-                  }}
-                >
-                  <strong>Next upgrade:</strong> MCP will generate detailed
-                  profitability, dead-stock, supplier outstanding and
-                  executive business reports.
-                </div>
-              </div>
-            </section>
+              <p className="mt-2 text-sm leading-6 text-slate-400">
+                Reports use live business data from your RetailPilot AI
+                database. Financial figures shown here are operational
+                estimates and should be reviewed before making business
+                decisions.
+              </p>
+            </div>
           </>
         )}
       </div>
     </main>
-  );
+  )
 }
