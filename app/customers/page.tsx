@@ -1,499 +1,347 @@
-'use client'
+"use client";
 
-import { useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { useEffect, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 
 type Customer = {
-  id: string
-  name: string
-  phone: string | null
-  email: string | null
-  loyalty_points: number
-  created_at: string
-}
+  id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  loyalty_points: number;
+  created_at: string;
+};
 
 export default function CustomersPage() {
-  const supabase = createClient()
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [tenantId, setTenantId] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
 
-  const [customers, setCustomers] = useState<Customer[]>([])
-  const [tenantId, setTenantId] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [message, setMessage] = useState('')
-
-  const [name, setName] = useState('')
-  const [phone, setPhone] = useState('')
-  const [email, setEmail] = useState('')
+  const [form, setForm] = useState({
+    name: "",
+    phone: "",
+    email: "",
+  });
 
   useEffect(() => {
-    loadCustomers()
-  }, [])
+    loadCustomers();
+  }, []);
 
   async function loadCustomers() {
-    setLoading(true)
+    try {
+      setLoading(true);
+      setMessage("");
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+      const supabase = createClient();
 
-    if (!user) {
-      window.location.href = '/login'
-      return
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
+
+      if (authError || !user) {
+        setMessage("Please log in to view customers.");
+        return;
+      }
+
+      const { data: profile, error: profileError } = await supabase
+        .from("user_profiles")
+        .select("tenant_id")
+        .eq("id", user.id)
+        .single();
+
+      if (profileError || !profile?.tenant_id) {
+        setMessage("Tenant information not found.");
+        return;
+      }
+
+      setTenantId(profile.tenant_id);
+
+      const { data, error } = await supabase
+        .from("customers")
+        .select(
+          "id, name, phone, email, loyalty_points, created_at"
+        )
+        .eq("tenant_id", profile.tenant_id)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        throw error;
+      }
+
+      setCustomers(data ?? []);
+    } catch (error) {
+      console.error("Customers loading error:", error);
+      setMessage("Unable to load customers.");
+    } finally {
+      setLoading(false);
     }
-
-    const { data: profile, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('tenant_id')
-      .eq('id', user.id)
-      .single()
-
-    if (profileError || !profile?.tenant_id) {
-      setMessage('Business profile not found.')
-      setLoading(false)
-      return
-    }
-
-    setTenantId(profile.tenant_id)
-
-    const { data, error } = await supabase
-      .from('customers')
-      .select('*')
-      .eq('tenant_id', profile.tenant_id)
-      .order('created_at', { ascending: false })
-
-    if (error) {
-      setMessage(error.message)
-    } else {
-      setCustomers(data ?? [])
-    }
-
-    setLoading(false)
   }
 
-  async function addCustomer(e: React.FormEvent) {
-    e.preventDefault()
+  async function addCustomer(event: React.FormEvent) {
+    event.preventDefault();
 
     if (!tenantId) {
-      setMessage('Tenant not found.')
-      return
+      setMessage("Tenant information is missing.");
+      return;
     }
 
-    setMessage('Adding customer...')
-
-    const { error } = await supabase.from('customers').insert({
-      tenant_id: tenantId,
-      name,
-      phone: phone || null,
-      email: email || null,
-      loyalty_points: 0,
-    })
-
-    if (error) {
-      setMessage(error.message)
-      return
+    if (!form.name.trim()) {
+      setMessage("Customer name is required.");
+      return;
     }
 
-    setMessage('Customer added successfully!')
+    try {
+      setSaving(true);
+      setMessage("");
 
-    setName('')
-    setPhone('')
-    setEmail('')
+      const supabase = createClient();
 
-    await loadCustomers()
+      const { error } = await supabase.from("customers").insert({
+        tenant_id: tenantId,
+        name: form.name.trim(),
+        phone: form.phone.trim() || null,
+        email: form.email.trim() || null,
+        loyalty_points: 0,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      setForm({
+        name: "",
+        phone: "",
+        email: "",
+      });
+
+      setMessage("Customer added successfully.");
+      await loadCustomers();
+    } catch (error) {
+      console.error("Customer insert error:", error);
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to add customer."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const totalCustomers = customers.length;
+
+  const totalLoyaltyPoints = customers.reduce(
+    (sum, customer) => sum + Number(customer.loyalty_points ?? 0),
+    0
+  );
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-slate-950 p-6 text-white">
+        <div className="mx-auto max-w-7xl">
+          <div className="animate-pulse">
+            <div className="h-10 w-64 rounded-lg bg-slate-800" />
+            <div className="mt-3 h-5 w-96 rounded bg-slate-800" />
+          </div>
+        </div>
+      </main>
+    );
   }
 
   return (
-    <main
-      style={{
-        minHeight: '100vh',
-        padding: '24px',
-        backgroundColor: '#f8fafc',
-        color: '#0f172a',
-        fontFamily: 'Arial, sans-serif',
-      }}
-    >
-      <div
-        style={{
-          maxWidth: '1200px',
-          margin: '0 auto',
-        }}
-      >
-        {/* Header */}
-        <div style={{ marginBottom: '24px' }}>
-          <h1
-            style={{
-              margin: 0,
-              fontSize: '32px',
-              fontWeight: '700',
-              color: '#0f172a',
-            }}
-          >
+    <main className="min-h-screen bg-slate-950 px-4 py-6 text-white sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-8">
+          <p className="text-sm font-semibold uppercase tracking-wider text-indigo-400">
+            RetailPilot AI
+          </p>
+
+          <h1 className="mt-2 text-3xl font-bold sm:text-4xl">
             Customers
           </h1>
 
-          <p
-            style={{
-              marginTop: '8px',
-              color: '#64748b',
-              fontSize: '15px',
-            }}
-          >
-            Manage customer information and loyalty points.
+          <p className="mt-2 text-slate-400">
+            Manage customer profiles and loyalty information.
           </p>
         </div>
 
-        {/* Message */}
         {message && (
-          <div
-            style={{
-              marginBottom: '20px',
-              padding: '14px 16px',
-              borderRadius: '10px',
-              backgroundColor: '#e2e8f0',
-              color: '#0f172a',
-              fontSize: '14px',
-              fontWeight: '600',
-            }}
-          >
+          <div className="mb-6 rounded-xl border border-indigo-500/30 bg-indigo-500/10 px-4 py-3 text-sm text-indigo-200">
             {message}
           </div>
         )}
 
-        {/* Add Customer */}
-        <section
-          style={{
-            backgroundColor: '#ffffff',
-            border: '1px solid #e2e8f0',
-            borderRadius: '14px',
-            padding: '24px',
-            marginBottom: '24px',
-          }}
-        >
-          <h2
-            style={{
-              margin: '0 0 6px',
-              fontSize: '21px',
-              color: '#0f172a',
-            }}
-          >
-            Add New Customer
-          </h2>
+        <div className="mb-6 grid gap-4 sm:grid-cols-2">
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+            <p className="text-sm text-slate-400">Total Customers</p>
+            <p className="mt-2 text-3xl font-bold">
+              {totalCustomers}
+            </p>
+          </div>
 
-          <p
-            style={{
-              margin: '0 0 20px',
-              color: '#64748b',
-              fontSize: '14px',
-            }}
-          >
-            Add customer details for billing and loyalty management.
-          </p>
+          <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+            <p className="text-sm text-slate-400">
+              Loyalty Points
+            </p>
+            <p className="mt-2 text-3xl font-bold">
+              {totalLoyaltyPoints}
+            </p>
+          </div>
+        </div>
 
-          <form onSubmit={addCustomer}>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns:
-                  'repeat(auto-fit, minmax(220px, 1fr))',
-                gap: '16px',
-              }}
+        <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
+          <section className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
+            <h2 className="text-xl font-bold">Add Customer</h2>
+
+            <form
+              onSubmit={addCustomer}
+              className="mt-6 space-y-4"
             >
               <div>
-                <label
-                  style={{
-                    display: 'block',
-                    marginBottom: '7px',
-                    fontSize: '14px',
-                    fontWeight: '600',
-                    color: '#334155',
-                  }}
-                >
-                  Customer Name
+                <label className="mb-2 block text-sm font-medium text-slate-300">
+                  Customer Name *
                 </label>
 
                 <input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Customer name"
-                  required
-                  style={{
-                    width: '100%',
-                    boxSizing: 'border-box',
-                    padding: '12px',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '8px',
-                    backgroundColor: '#ffffff',
-                    color: '#0f172a',
-                    fontSize: '14px',
-                  }}
+                  value={form.name}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      name: event.target.value,
+                    })
+                  }
+                  placeholder="Enter customer name"
+                  className="w-full rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-white outline-none placeholder:text-slate-500 focus:border-indigo-500"
                 />
               </div>
 
               <div>
-                <label
-                  style={{
-                    display: 'block',
-                    marginBottom: '7px',
-                    fontSize: '14px',
-                    fontWeight: '600',
-                    color: '#334155',
-                  }}
-                >
+                <label className="mb-2 block text-sm font-medium text-slate-300">
                   Phone
                 </label>
 
                 <input
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  value={form.phone}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      phone: event.target.value,
+                    })
+                  }
                   placeholder="9876543210"
-                  style={{
-                    width: '100%',
-                    boxSizing: 'border-box',
-                    padding: '12px',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '8px',
-                    backgroundColor: '#ffffff',
-                    color: '#0f172a',
-                    fontSize: '14px',
-                  }}
+                  className="w-full rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-white outline-none placeholder:text-slate-500 focus:border-indigo-500"
                 />
               </div>
 
               <div>
-                <label
-                  style={{
-                    display: 'block',
-                    marginBottom: '7px',
-                    fontSize: '14px',
-                    fontWeight: '600',
-                    color: '#334155',
-                  }}
-                >
+                <label className="mb-2 block text-sm font-medium text-slate-300">
                   Email
                 </label>
 
                 <input
                   type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  value={form.email}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      email: event.target.value,
+                    })
+                  }
                   placeholder="customer@email.com"
-                  style={{
-                    width: '100%',
-                    boxSizing: 'border-box',
-                    padding: '12px',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '8px',
-                    backgroundColor: '#ffffff',
-                    color: '#0f172a',
-                    fontSize: '14px',
-                  }}
+                  className="w-full rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-white outline-none placeholder:text-slate-500 focus:border-indigo-500"
                 />
               </div>
-            </div>
 
-            <button
-              type="submit"
-              style={{
-                marginTop: '20px',
-                padding: '12px 22px',
-                border: 'none',
-                borderRadius: '8px',
-                backgroundColor: '#0f172a',
-                color: '#ffffff',
-                fontSize: '14px',
-                fontWeight: '700',
-                cursor: 'pointer',
-              }}
-            >
-              + Add Customer
-            </button>
-          </form>
-        </section>
-
-        {/* Customer List */}
-        <section
-          style={{
-            backgroundColor: '#ffffff',
-            border: '1px solid #e2e8f0',
-            borderRadius: '14px',
-            overflow: 'hidden',
-          }}
-        >
-          <div
-            style={{
-              padding: '20px 24px',
-              borderBottom: '1px solid #e2e8f0',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              gap: '15px',
-            }}
-          >
-            <div>
-              <h2
-                style={{
-                  margin: 0,
-                  fontSize: '21px',
-                  color: '#0f172a',
-                }}
+              <button
+                type="submit"
+                disabled={saving}
+                className="w-full rounded-xl bg-indigo-600 px-4 py-3 font-semibold transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
               >
+                {saving ? "Adding..." : "Add Customer"}
+              </button>
+            </form>
+          </section>
+
+          <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900">
+            <div className="border-b border-slate-800 px-6 py-5">
+              <h2 className="text-xl font-bold">
                 Customer List
               </h2>
 
-              <p
-                style={{
-                  margin: '5px 0 0',
-                  fontSize: '14px',
-                  color: '#64748b',
-                }}
-              >
+              <p className="mt-1 text-sm text-slate-400">
                 {customers.length} customer
-                {customers.length !== 1 ? 's' : ''}
+                {customers.length === 1 ? "" : "s"} found
               </p>
             </div>
 
-            <button
-              onClick={loadCustomers}
-              style={{
-                padding: '9px 15px',
-                border: '1px solid #cbd5e1',
-                borderRadius: '8px',
-                backgroundColor: '#ffffff',
-                color: '#334155',
-                fontSize: '13px',
-                fontWeight: '600',
-                cursor: 'pointer',
-              }}
-            >
-              Refresh
-            </button>
-          </div>
-
-          {loading ? (
-            <div
-              style={{
-                padding: '40px',
-                textAlign: 'center',
-                color: '#64748b',
-              }}
-            >
-              Loading customers...
-            </div>
-          ) : customers.length === 0 ? (
-            <div
-              style={{
-                padding: '50px 20px',
-                textAlign: 'center',
-              }}
-            >
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: '17px',
-                  fontWeight: '700',
-                  color: '#334155',
-                }}
-              >
-                No customers yet
-              </p>
-
-              <p
-                style={{
-                  marginTop: '8px',
-                  fontSize: '14px',
-                  color: '#64748b',
-                }}
-              >
-                Add your first customer above.
-              </p>
-            </div>
-          ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table
-                style={{
-                  width: '100%',
-                  minWidth: '700px',
-                  borderCollapse: 'collapse',
-                }}
-              >
-                <thead>
-                  <tr style={{ backgroundColor: '#f8fafc' }}>
-                    <th style={headerStyle}>Customer</th>
-                    <th style={headerStyle}>Phone</th>
-                    <th style={headerStyle}>Email</th>
-                    <th style={headerStyle}>Loyalty Points</th>
-                    <th style={headerStyle}>Joined</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {customers.map((customer) => (
-                    <tr
-                      key={customer.id}
-                      style={{
-                        borderTop: '1px solid #e2e8f0',
-                      }}
-                    >
-                      <td style={cellStyle}>
-                        <strong style={{ color: '#0f172a' }}>
-                          {customer.name}
-                        </strong>
-                      </td>
-
-                      <td style={cellStyle}>
-                        {customer.phone || '-'}
-                      </td>
-
-                      <td style={cellStyle}>
-                        {customer.email || '-'}
-                      </td>
-
-                      <td style={cellStyle}>
-                        <span
-                          style={{
-                            display: 'inline-block',
-                            padding: '5px 9px',
-                            borderRadius: '999px',
-                            backgroundColor: '#f1f5f9',
-                            color: '#334155',
-                            fontSize: '12px',
-                            fontWeight: '700',
-                          }}
-                        >
-                          {customer.loyalty_points} points
-                        </span>
-                      </td>
-
-                      <td style={cellStyle}>
-                        {new Date(
-                          customer.created_at
-                        ).toLocaleDateString()}
-                      </td>
+            {customers.length === 0 ? (
+              <div className="px-6 py-12 text-center text-slate-400">
+                No customers found. Add your first customer.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[650px]">
+                  <thead>
+                    <tr className="border-b border-slate-800 text-left text-sm text-slate-400">
+                      <th className="px-6 py-4 font-medium">
+                        Customer
+                      </th>
+                      <th className="px-6 py-4 font-medium">
+                        Phone
+                      </th>
+                      <th className="px-6 py-4 font-medium">
+                        Email
+                      </th>
+                      <th className="px-6 py-4 font-medium">
+                        Loyalty
+                      </th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
+                  </thead>
+
+                  <tbody>
+                    {customers.map((customer) => (
+                      <tr
+                        key={customer.id}
+                        className="border-b border-slate-800/70 transition hover:bg-slate-800/40"
+                      >
+                        <td className="px-6 py-4">
+                          <div className="font-semibold">
+                            {customer.name}
+                          </div>
+
+                          <div className="mt-1 text-xs text-slate-500">
+                            Added{" "}
+                            {new Date(
+                              customer.created_at
+                            ).toLocaleDateString("en-IN")}
+                          </div>
+                        </td>
+
+                        <td className="px-6 py-4 text-slate-300">
+                          {customer.phone || "—"}
+                        </td>
+
+                        <td className="px-6 py-4 text-slate-300">
+                          {customer.email || "—"}
+                        </td>
+
+                        <td className="px-6 py-4">
+                          <span className="rounded-full bg-indigo-500/10 px-3 py-1 text-sm font-medium text-indigo-300">
+                            {customer.loyalty_points ?? 0} pts
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        </div>
       </div>
     </main>
-  )
-}
-
-const headerStyle: React.CSSProperties = {
-  padding: '13px 18px',
-  textAlign: 'left',
-  fontSize: '12px',
-  fontWeight: '700',
-  color: '#64748b',
-  textTransform: 'uppercase',
-  whiteSpace: 'nowrap',
-}
-
-const cellStyle: React.CSSProperties = {
-  padding: '15px 18px',
-  fontSize: '14px',
-  color: '#475569',
-  whiteSpace: 'nowrap',
+  );
 }
