@@ -1,92 +1,104 @@
-"use client";
+"use client"
 
-import { FormEvent, useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useEffect, useState } from "react"
+import { createClient } from "@/lib/supabase/client"
 
 type Supplier = {
-  id: string;
-  name: string;
-};
+  id: string
+  name: string
+}
 
 type Store = {
-  id: string;
-  name: string;
-};
+  id: string
+  name: string
+}
 
 type Product = {
-  id: string;
-  name: string;
-  sku: string;
-  purchase_price: number;
-};
+  id: string
+  name: string
+  sku: string
+  purchase_price: number
+}
 
 type Purchase = {
-  id: string;
-  invoice_number: string;
-  purchase_date: string;
-  total_amount: number;
-  payment_status: string;
-  notes?: string | null;
-  suppliers: Supplier | null;
-  stores: Store | null;
-};
+  id: string
+  invoice_number: string | null
+  purchase_date: string
+  total_amount: number
+  payment_status: string
+  notes: string | null
+  supplier_id: string | null
+  store_id: string | null
+  supplier?: { name: string } | null
+  store?: { name: string } | null
+}
+
+type PurchaseItem = {
+  product_id: string
+  quantity: number
+  unit_cost: number
+}
 
 export default function PurchasesPage() {
-  const supabase = createClient();
+  const [purchases, setPurchases] = useState<Purchase[]>([])
+  const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  const [stores, setStores] = useState<Store[]>([])
+  const [products, setProducts] = useState<Product[]>([])
 
-  const [purchases, setPurchases] = useState<Purchase[]>([]);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [stores, setStores] = useState<Store[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
+  const [supplierId, setSupplierId] = useState("")
+  const [storeId, setStoreId] = useState("")
+  const [invoiceNumber, setInvoiceNumber] = useState("")
+  const [purchaseDate, setPurchaseDate] = useState(
+    new Date().toISOString().split("T")[0]
+  )
+  const [paymentStatus, setPaymentStatus] = useState("pending")
+  const [notes, setNotes] = useState("")
 
-  const [tenantId, setTenantId] = useState<string | null>(null);
+  const [items, setItems] = useState<PurchaseItem[]>([
+    {
+      product_id: "",
+      quantity: 1,
+      unit_cost: 0,
+    },
+  ])
 
-  const [invoiceNumber, setInvoiceNumber] = useState("");
-  const [supplierId, setSupplierId] = useState("");
-  const [storeId, setStoreId] = useState("");
-  const [productId, setProductId] = useState("");
-  const [quantity, setQuantity] = useState("");
-  const [unitCost, setUnitCost] = useState("");
-  const [paymentStatus, setPaymentStatus] = useState("pending");
-  const [notes, setNotes] = useState("");
-
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState("")
+  const [error, setError] = useState("")
 
   useEffect(() => {
-    loadData();
-  }, []);
+    loadPurchases()
+  }, [])
 
-  async function loadData() {
-    setLoading(true);
-    setMessage("");
-
+  async function loadPurchases() {
     try {
+      setLoading(true)
+      setError("")
+
+      const supabase = createClient()
+
       const {
         data: { user },
-      } = await supabase.auth.getUser();
+      } = await supabase.auth.getUser()
 
       if (!user) {
-        setMessage("Please login first.");
-        setLoading(false);
-        return;
+        setError("Please login first.")
+        return
       }
 
       const { data: profile, error: profileError } = await supabase
         .from("user_profiles")
         .select("tenant_id")
         .eq("id", user.id)
-        .single();
+        .single()
 
       if (profileError || !profile?.tenant_id) {
-        setMessage("Tenant profile not found.");
-        setLoading(false);
-        return;
+        setError("Business profile not found.")
+        return
       }
 
-      const currentTenantId = profile.tenant_id;
-      setTenantId(currentTenantId);
+      const tenantId = profile.tenant_id
 
       const [purchaseResult, supplierResult, storeResult, productResult] =
         await Promise.all([
@@ -94,146 +106,190 @@ export default function PurchasesPage() {
             .from("purchases")
             .select(
               `
-                id,
-                invoice_number,
-                purchase_date,
-                total_amount,
-                payment_status,
-                notes,
-                suppliers (
-                  id,
-                  name
-                ),
-                stores (
-                  id,
-                  name
-                )
-              `
+              id,
+              invoice_number,
+              purchase_date,
+              total_amount,
+              payment_status,
+              notes,
+              supplier_id,
+              store_id,
+              suppliers(name),
+              stores(name)
+            `
             )
-            .eq("tenant_id", currentTenantId)
+            .eq("tenant_id", tenantId)
             .order("purchase_date", { ascending: false }),
 
           supabase
             .from("suppliers")
-            .select("id, name")
-            .eq("tenant_id", currentTenantId)
+            .select("id,name")
+            .eq("tenant_id", tenantId)
             .eq("is_active", true)
             .order("name"),
 
           supabase
             .from("stores")
-            .select("id, name")
-            .eq("tenant_id", currentTenantId)
+            .select("id,name")
+            .eq("tenant_id", tenantId)
             .eq("is_active", true)
             .order("name"),
 
           supabase
             .from("products")
-            .select("id, name, sku, purchase_price")
-            .eq("tenant_id", currentTenantId)
+            .select("id,name,sku,purchase_price")
+            .eq("tenant_id", tenantId)
             .eq("is_active", true)
             .order("name"),
-        ]);
+        ])
 
-      if (purchaseResult.error) {
-        throw purchaseResult.error;
-      }
+      if (purchaseResult.error) throw purchaseResult.error
+      if (supplierResult.error) throw supplierResult.error
+      if (storeResult.error) throw storeResult.error
+      if (productResult.error) throw productResult.error
 
-      if (supplierResult.error) {
-        throw supplierResult.error;
-      }
-
-      if (storeResult.error) {
-        throw storeResult.error;
-      }
-
-      if (productResult.error) {
-        throw productResult.error;
-      }
-
-      const purchaseData: Purchase[] = (purchaseResult.data ?? []).map(
+      const formattedPurchases = (purchaseResult.data || []).map(
         (purchase: any) => ({
-          id: purchase.id,
-          invoice_number: purchase.invoice_number,
-          purchase_date: purchase.purchase_date,
-          total_amount: Number(purchase.total_amount ?? 0),
-          payment_status: purchase.payment_status,
-          notes: purchase.notes ?? null,
-
-          suppliers: Array.isArray(purchase.suppliers)
-            ? purchase.suppliers[0] ?? null
-            : purchase.suppliers ?? null,
-
-          stores: Array.isArray(purchase.stores)
-            ? purchase.stores[0] ?? null
-            : purchase.stores ?? null,
+          ...purchase,
+          supplier: Array.isArray(purchase.suppliers)
+            ? purchase.suppliers[0] || null
+            : purchase.suppliers || null,
+          store: Array.isArray(purchase.stores)
+            ? purchase.stores[0] || null
+            : purchase.stores || null,
         })
-      );
+      )
 
-      setPurchases(purchaseData);
-      setSuppliers((supplierResult.data ?? []) as Supplier[]);
-      setStores((storeResult.data ?? []) as Store[]);
-      setProducts(
-        (productResult.data ?? []).map((product: any) => ({
-          id: product.id,
-          name: product.name,
-          sku: product.sku,
-          purchase_price: Number(product.purchase_price ?? 0),
-        }))
-      );
-    } catch (error) {
-      console.error("Purchases load error:", error);
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "Unable to load purchase data."
-      );
+      setPurchases(formattedPurchases)
+      setSuppliers(supplierResult.data || [])
+      setStores(storeResult.data || [])
+      setProducts(productResult.data || [])
+    } catch (err) {
+      console.error(err)
+      setError("Unable to load purchases.")
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
   }
 
-  function handleProductChange(value: string) {
-    setProductId(value);
+  function updateItem(
+    index: number,
+    field: keyof PurchaseItem,
+    value: string
+  ) {
+    setItems((current) =>
+      current.map((item, i) => {
+        if (i !== index) return item
 
-    const product = products.find((item) => item.id === value);
+        if (field === "product_id") {
+          const selectedProduct = products.find(
+            (product) => product.id === value
+          )
 
-    if (product) {
-      setUnitCost(String(product.purchase_price ?? ""));
-    }
+          return {
+            ...item,
+            product_id: value,
+            unit_cost: selectedProduct
+              ? Number(selectedProduct.purchase_price || 0)
+              : item.unit_cost,
+          }
+        }
+
+        if (field === "quantity") {
+          return {
+            ...item,
+            quantity: Math.max(1, Number(value) || 1),
+          }
+        }
+
+        return {
+          ...item,
+          unit_cost: Math.max(0, Number(value) || 0),
+        }
+      })
+    )
   }
 
-  async function addPurchase(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function addItem() {
+    setItems((current) => [
+      ...current,
+      {
+        product_id: "",
+        quantity: 1,
+        unit_cost: 0,
+      },
+    ])
+  }
 
-    if (!tenantId) {
-      setMessage("Tenant not found.");
-      return;
-    }
+  function removeItem(index: number) {
+    if (items.length === 1) return
 
-    if (!supplierId || !storeId || !productId) {
-      setMessage("Please select supplier, store and product.");
-      return;
-    }
+    setItems((current) => current.filter((_, i) => i !== index))
+  }
 
-    const qty = Number(quantity);
-    const cost = Number(unitCost);
+  function calculateTotal() {
+    return items.reduce(
+      (sum, item) =>
+        sum + Number(item.quantity || 0) * Number(item.unit_cost || 0),
+      0
+    )
+  }
 
-    if (!qty || qty <= 0) {
-      setMessage("Enter a valid quantity.");
-      return;
-    }
-
-    if (!cost || cost <= 0) {
-      setMessage("Enter a valid unit cost.");
-      return;
-    }
-
-    setSaving(true);
-    setMessage("");
-
+  async function addPurchase() {
     try {
-      const totalAmount = qty * cost;
+      setSaving(true)
+      setMessage("")
+      setError("")
+
+      if (!supplierId) {
+        setError("Please select a supplier.")
+        return
+      }
+
+      if (!storeId) {
+        setError("Please select a store.")
+        return
+      }
+
+      if (items.some((item) => !item.product_id)) {
+        setError("Please select a product for every purchase item.")
+        return
+      }
+
+      if (items.some((item) => item.quantity <= 0)) {
+        setError("Quantity must be greater than zero.")
+        return
+      }
+
+      if (items.some((item) => item.unit_cost < 0)) {
+        setError("Unit cost cannot be negative.")
+        return
+      }
+
+      const supabase = createClient()
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (!user) {
+        setError("Please login first.")
+        return
+      }
+
+      const { data: profile, error: profileError } = await supabase
+        .from("user_profiles")
+        .select("tenant_id")
+        .eq("id", user.id)
+        .single()
+
+      if (profileError || !profile?.tenant_id) {
+        setError("Business profile not found.")
+        return
+      }
+
+      const tenantId = profile.tenant_id
+      const totalAmount = calculateTotal()
 
       const { data: purchase, error: purchaseError } = await supabase
         .from("purchases")
@@ -241,196 +297,129 @@ export default function PurchasesPage() {
           tenant_id: tenantId,
           store_id: storeId,
           supplier_id: supplierId,
-          invoice_number:
-            invoiceNumber.trim() ||
-            `PUR-${Date.now().toString().slice(-8)}`,
-          purchase_date: new Date().toISOString(),
+          invoice_number: invoiceNumber.trim() || null,
+          purchase_date: purchaseDate,
           total_amount: totalAmount,
           payment_status: paymentStatus,
           notes: notes.trim() || null,
         })
         .select("id")
-        .single();
+        .single()
 
-      if (purchaseError) {
-        throw purchaseError;
-      }
+      if (purchaseError) throw purchaseError
+
+      const purchaseItems = items.map((item) => ({
+        tenant_id: tenantId,
+        purchase_id: purchase.id,
+        product_id: item.product_id,
+        quantity: item.quantity,
+        unit_cost: item.unit_cost,
+      }))
 
       const { error: itemError } = await supabase
         .from("purchase_items")
-        .insert({
-          tenant_id: tenantId,
-          purchase_id: purchase.id,
-          product_id: productId,
-          quantity: qty,
-          unit_cost: cost,
-        });
+        .insert(purchaseItems)
 
       if (itemError) {
-        await supabase
-          .from("purchases")
-          .delete()
-          .eq("id", purchase.id)
-          .eq("tenant_id", tenantId);
-
-        throw itemError;
+        await supabase.from("purchases").delete().eq("id", purchase.id)
+        throw itemError
       }
+
+      const stockMovements = items.map((item) => ({
+        tenant_id: tenantId,
+        store_id: storeId,
+        product_id: item.product_id,
+        movement_type: "purchase",
+        quantity: item.quantity,
+        reference_id: purchase.id,
+        notes: `Purchase ${invoiceNumber.trim() || purchase.id}`,
+      }))
 
       const { error: movementError } = await supabase
         .from("stock_movements")
-        .insert({
-          tenant_id: tenantId,
-          store_id: storeId,
-          product_id: productId,
-          movement_type: "purchase",
-          quantity: qty,
-          reference_id: purchase.id,
-          notes: `Purchase ${invoiceNumber || purchase.id}`,
-        });
+        .insert(stockMovements)
 
       if (movementError) {
-        throw movementError;
+        console.error("Stock movement error:", movementError)
+        setMessage(
+          "Purchase created, but stock movement could not be created."
+        )
+      } else {
+        setMessage("Purchase created and inventory updated successfully.")
       }
 
-      setMessage("Purchase added successfully.");
+      setSupplierId("")
+      setStoreId("")
+      setInvoiceNumber("")
+      setPurchaseDate(new Date().toISOString().split("T")[0])
+      setPaymentStatus("pending")
+      setNotes("")
+      setItems([
+        {
+          product_id: "",
+          quantity: 1,
+          unit_cost: 0,
+        },
+      ])
 
-      setInvoiceNumber("");
-      setSupplierId("");
-      setStoreId("");
-      setProductId("");
-      setQuantity("");
-      setUnitCost("");
-      setPaymentStatus("pending");
-      setNotes("");
-
-      await loadData();
-    } catch (error) {
-      console.error("Add purchase error:", error);
-
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "Unable to add purchase."
-      );
+      await loadPurchases()
+    } catch (err: any) {
+      console.error(err)
+      setError(err?.message || "Unable to create purchase.")
     } finally {
-      setSaving(false);
+      setSaving(false)
     }
   }
 
-  const totalPurchases = purchases.reduce(
-    (sum, purchase) => sum + Number(purchase.total_amount || 0),
-    0
-  );
-
-  const pendingPurchases = purchases.filter(
-    (purchase) =>
-      purchase.payment_status.toLowerCase() === "pending" ||
-      purchase.payment_status.toLowerCase() === "unpaid"
-  );
-
-  const paidPurchases = purchases.filter(
-    (purchase) => purchase.payment_status.toLowerCase() === "paid"
-  );
+  const totalAmount = calculateTotal()
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 md:px-8">
+    <main className="min-h-screen bg-slate-950 px-4 py-8 text-white sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl">
-        {/* Header */}
-        <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-sm font-semibold text-indigo-600">
-              RETAILPILOT AI
-            </p>
 
-            <h1 className="mt-1 text-3xl font-bold tracking-tight">
-              Purchases
-            </h1>
+        <div className="mb-8">
+          <p className="text-sm font-semibold text-cyan-400">
+            INVENTORY PROCUREMENT
+          </p>
 
-            <p className="mt-1 text-sm text-slate-500">
-              Manage supplier purchases and incoming inventory.
-            </p>
-          </div>
+          <h1 className="mt-1 text-3xl font-bold">
+            Purchases
+          </h1>
 
-          <button
-            onClick={loadData}
-            className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
-          >
-            Refresh Data
-          </button>
+          <p className="mt-2 text-sm text-slate-400">
+            Record supplier purchases and automatically update inventory.
+          </p>
         </div>
 
-        {/* Message */}
         {message && (
-          <div className="mb-6 rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm font-medium text-indigo-700">
+          <div className="mb-6 rounded-xl border border-emerald-800 bg-emerald-950/40 px-4 py-3 text-sm text-emerald-300">
             {message}
           </div>
         )}
 
-        {/* KPI Cards */}
-        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-slate-500">Total Purchases</p>
-            <p className="mt-2 text-2xl font-bold">
-              ₹{totalPurchases.toLocaleString("en-IN")}
-            </p>
+        {error && (
+          <div className="mb-6 rounded-xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-300">
+            {error}
           </div>
+        )}
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-slate-500">Purchase Orders</p>
-            <p className="mt-2 text-2xl font-bold">
-              {purchases.length}
-            </p>
-          </div>
+        {/* Purchase Form */}
+        <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5 sm:p-6">
+          <h2 className="text-xl font-semibold">
+            Create Purchase
+          </h2>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-slate-500">Paid</p>
-            <p className="mt-2 text-2xl font-bold text-emerald-600">
-              {paidPurchases.length}
-            </p>
-          </div>
+          <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-slate-500">Pending</p>
-            <p className="mt-2 text-2xl font-bold text-amber-600">
-              {pendingPurchases.length}
-            </p>
-          </div>
-        </div>
-
-        {/* Add Purchase */}
-        <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-          <div className="mb-5">
-            <h2 className="text-xl font-bold">Add Purchase</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Record a supplier purchase and automatically add stock.
-            </p>
-          </div>
-
-          <form onSubmit={addPurchase} className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {/* Invoice */}
             <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Invoice Number
-              </label>
-
-              <input
-                value={invoiceNumber}
-                onChange={(e) => setInvoiceNumber(e.target.value)}
-                placeholder="INV-1001"
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-              />
-            </div>
-
-            {/* Supplier */}
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+              <label className="mb-2 block text-sm text-slate-300">
                 Supplier
               </label>
 
               <select
                 value={supplierId}
                 onChange={(e) => setSupplierId(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white outline-none focus:border-cyan-500"
               >
                 <option value="">Select supplier</option>
 
@@ -442,16 +431,15 @@ export default function PurchasesPage() {
               </select>
             </div>
 
-            {/* Store */}
             <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+              <label className="mb-2 block text-sm text-slate-300">
                 Store
               </label>
 
               <select
                 value={storeId}
                 onChange={(e) => setStoreId(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white outline-none focus:border-cyan-500"
               >
                 <option value="">Select store</option>
 
@@ -463,193 +451,317 @@ export default function PurchasesPage() {
               </select>
             </div>
 
-            {/* Product */}
             <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Product
-              </label>
-
-              <select
-                value={productId}
-                onChange={(e) => handleProductChange(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-              >
-                <option value="">Select product</option>
-
-                {products.map((product) => (
-                  <option key={product.id} value={product.id}>
-                    {product.name} — {product.sku}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Quantity */}
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Quantity
+              <label className="mb-2 block text-sm text-slate-300">
+                Invoice Number
               </label>
 
               <input
-                type="number"
-                min="1"
-                value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-                placeholder="10"
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                value={invoiceNumber}
+                onChange={(e) => setInvoiceNumber(e.target.value)}
+                placeholder="INV-001"
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white placeholder:text-slate-600 outline-none focus:border-cyan-500"
               />
             </div>
 
-            {/* Unit Cost */}
             <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Unit Cost (₹)
+              <label className="mb-2 block text-sm text-slate-300">
+                Purchase Date
               </label>
 
               <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={unitCost}
-                onChange={(e) => setUnitCost(e.target.value)}
-                placeholder="25"
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                type="date"
+                value={purchaseDate}
+                onChange={(e) => setPurchaseDate(e.target.value)}
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white outline-none focus:border-cyan-500"
               />
             </div>
 
-            {/* Payment Status */}
+          </div>
+
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+
             <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+              <label className="mb-2 block text-sm text-slate-300">
                 Payment Status
               </label>
 
               <select
                 value={paymentStatus}
                 onChange={(e) => setPaymentStatus(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white outline-none focus:border-cyan-500"
               >
                 <option value="pending">Pending</option>
-                <option value="paid">Paid</option>
                 <option value="partial">Partial</option>
+                <option value="paid">Paid</option>
               </select>
             </div>
 
-            {/* Notes */}
-            <div className="md:col-span-2">
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+            <div>
+              <label className="mb-2 block text-sm text-slate-300">
                 Notes
               </label>
 
               <input
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Optional purchase notes"
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                placeholder="Optional notes"
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white placeholder:text-slate-600 outline-none focus:border-cyan-500"
               />
             </div>
 
-            {/* Submit */}
-            <div className="flex items-end">
+          </div>
+
+          {/* Items */}
+          <div className="mt-8">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold">
+                Purchase Items
+              </h3>
+
               <button
-                type="submit"
-                disabled={saving}
-                className="w-full rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                type="button"
+                onClick={addItem}
+                className="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-400"
               >
-                {saving ? "Saving..." : "Add Purchase"}
+                + Add Item
               </button>
             </div>
-          </form>
+
+            <div className="space-y-3">
+
+              {items.map((item, index) => (
+                <div
+                  key={index}
+                  className="grid gap-3 rounded-xl border border-slate-800 bg-slate-950 p-4 md:grid-cols-[2fr_1fr_1fr_auto]"
+                >
+
+                  <div>
+                    <label className="mb-2 block text-xs text-slate-500">
+                      Product
+                    </label>
+
+                    <select
+                      value={item.product_id}
+                      onChange={(e) =>
+                        updateItem(
+                          index,
+                          "product_id",
+                          e.target.value
+                        )
+                      }
+                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2.5 text-white outline-none focus:border-cyan-500"
+                    >
+                      <option value="">Select product</option>
+
+                      {products.map((product) => (
+                        <option key={product.id} value={product.id}>
+                          {product.name} ({product.sku})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-xs text-slate-500">
+                      Quantity
+                    </label>
+
+                    <input
+                      type="number"
+                      min="1"
+                      value={item.quantity}
+                      onChange={(e) =>
+                        updateItem(
+                          index,
+                          "quantity",
+                          e.target.value
+                        )
+                      }
+                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2.5 text-white outline-none focus:border-cyan-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-xs text-slate-500">
+                      Unit Cost
+                    </label>
+
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={item.unit_cost}
+                      onChange={(e) =>
+                        updateItem(
+                          index,
+                          "unit_cost",
+                          e.target.value
+                        )
+                      }
+                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2.5 text-white outline-none focus:border-cyan-500"
+                    />
+                  </div>
+
+                  <div className="flex items-end">
+                    <button
+                      type="button"
+                      onClick={() => removeItem(index)}
+                      disabled={items.length === 1}
+                      className="w-full rounded-lg border border-red-900 px-4 py-2.5 text-sm text-red-400 hover:bg-red-950 disabled:cursor-not-allowed disabled:opacity-30 md:w-auto"
+                    >
+                      Remove
+                    </button>
+                  </div>
+
+                </div>
+              ))}
+
+            </div>
+          </div>
+
+          {/* Total */}
+          <div className="mt-6 flex flex-col gap-4 rounded-xl border border-slate-800 bg-slate-950 p-5 sm:flex-row sm:items-center sm:justify-between">
+
+            <div>
+              <p className="text-sm text-slate-400">
+                Purchase Total
+              </p>
+
+              <p className="mt-1 text-3xl font-bold text-cyan-400">
+                ₹
+                {totalAmount.toLocaleString("en-IN", {
+                  maximumFractionDigits: 2,
+                })}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={addPurchase}
+              disabled={saving}
+              className="rounded-xl bg-cyan-500 px-6 py-3 font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {saving ? "Creating..." : "Create Purchase"}
+            </button>
+
+          </div>
         </section>
 
         {/* Purchase History */}
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 px-5 py-5 md:px-6">
-            <h2 className="text-xl font-bold">Purchase History</h2>
+        <section className="mt-8">
+          <div className="mb-4">
+            <h2 className="text-xl font-semibold">
+              Purchase History
+            </h2>
+
             <p className="mt-1 text-sm text-slate-500">
               Recent supplier purchase records.
             </p>
           </div>
 
           {loading ? (
-            <div className="p-8 text-center text-sm text-slate-500">
+            <div className="rounded-2xl border border-slate-800 bg-slate-900 p-8 text-center text-slate-400">
               Loading purchases...
             </div>
           ) : purchases.length === 0 ? (
-            <div className="p-10 text-center">
-              <p className="font-semibold text-slate-700">
-                No purchases found
+            <div className="rounded-2xl border border-slate-800 bg-slate-900 p-8 text-center">
+              <p className="font-medium">
+                No purchases yet
               </p>
+
               <p className="mt-1 text-sm text-slate-500">
-                Add your first purchase using the form above.
+                Create your first supplier purchase above.
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[850px] text-left text-sm">
-                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                  <tr>
-                    <th className="px-5 py-4">Invoice</th>
-                    <th className="px-5 py-4">Supplier</th>
-                    <th className="px-5 py-4">Store</th>
-                    <th className="px-5 py-4">Date</th>
-                    <th className="px-5 py-4">Amount</th>
-                    <th className="px-5 py-4">Status</th>
-                  </tr>
-                </thead>
+            <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[850px] text-left text-sm">
+                  <thead className="border-b border-slate-800 bg-slate-950">
+                    <tr>
+                      <th className="px-5 py-4 font-medium text-slate-400">
+                        Invoice
+                      </th>
 
-                <tbody className="divide-y divide-slate-100">
-                  {purchases.map((purchase) => (
-                    <tr
-                      key={purchase.id}
-                      className="transition hover:bg-slate-50"
-                    >
-                      <td className="px-5 py-4 font-semibold text-slate-900">
-                        {purchase.invoice_number}
-                      </td>
+                      <th className="px-5 py-4 font-medium text-slate-400">
+                        Supplier
+                      </th>
 
-                      <td className="px-5 py-4 text-slate-600">
-                        {purchase.suppliers?.name ?? "—"}
-                      </td>
+                      <th className="px-5 py-4 font-medium text-slate-400">
+                        Store
+                      </th>
 
-                      <td className="px-5 py-4 text-slate-600">
-                        {purchase.stores?.name ?? "—"}
-                      </td>
+                      <th className="px-5 py-4 font-medium text-slate-400">
+                        Date
+                      </th>
 
-                      <td className="px-5 py-4 text-slate-600">
-                        {new Date(
-                          purchase.purchase_date
-                        ).toLocaleDateString("en-IN")}
-                      </td>
+                      <th className="px-5 py-4 font-medium text-slate-400">
+                        Amount
+                      </th>
 
-                      <td className="px-5 py-4 font-semibold text-slate-900">
-                        ₹
-                        {Number(
-                          purchase.total_amount
-                        ).toLocaleString("en-IN")}
-                      </td>
-
-                      <td className="px-5 py-4">
-                        <span
-                          className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-                            purchase.payment_status.toLowerCase() === "paid"
-                              ? "bg-emerald-100 text-emerald-700"
-                              : purchase.payment_status.toLowerCase() ===
-                                "partial"
-                              ? "bg-blue-100 text-blue-700"
-                              : "bg-amber-100 text-amber-700"
-                          }`}
-                        >
-                          {purchase.payment_status}
-                        </span>
-                      </td>
+                      <th className="px-5 py-4 font-medium text-slate-400">
+                        Status
+                      </th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+
+                  <tbody>
+                    {purchases.map((purchase) => (
+                      <tr
+                        key={purchase.id}
+                        className="border-b border-slate-800 last:border-0 hover:bg-slate-800/40"
+                      >
+                        <td className="px-5 py-4 font-medium">
+                          {purchase.invoice_number || "—"}
+                        </td>
+
+                        <td className="px-5 py-4 text-slate-300">
+                          {purchase.supplier?.name || "—"}
+                        </td>
+
+                        <td className="px-5 py-4 text-slate-300">
+                          {purchase.store?.name || "—"}
+                        </td>
+
+                        <td className="px-5 py-4 text-slate-400">
+                          {new Date(
+                            purchase.purchase_date
+                          ).toLocaleDateString("en-IN")}
+                        </td>
+
+                        <td className="px-5 py-4 font-semibold">
+                          ₹
+                          {Number(
+                            purchase.total_amount || 0
+                          ).toLocaleString("en-IN", {
+                            maximumFractionDigits: 2,
+                          })}
+                        </td>
+
+                        <td className="px-5 py-4">
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-medium ${
+                              purchase.payment_status === "paid"
+                                ? "bg-emerald-950 text-emerald-400"
+                                : purchase.payment_status === "partial"
+                                ? "bg-yellow-950 text-yellow-400"
+                                : "bg-orange-950 text-orange-400"
+                            }`}
+                          >
+                            {purchase.payment_status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </section>
+
       </div>
     </main>
-  );
+  )
 }
