@@ -5,105 +5,48 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 
 type DashboardStats = {
-  sales: number;
-  profit: number;
   products: number;
-  lowStock: number;
   stores: number;
+  suppliers: number;
   customers: number;
+  sales: number;
+  revenue: number;
+  stockUnits: number;
+  lowStock: number;
 };
 
 const defaultStats: DashboardStats = {
-  sales: 0,
-  profit: 0,
   products: 0,
-  lowStock: 0,
   stores: 0,
+  suppliers: 0,
   customers: 0,
+  sales: 0,
+  revenue: 0,
+  stockUnits: 0,
+  lowStock: 0,
 };
 
-const modules = [
-  {
-    title: "Products",
-    description: "Manage products, prices and stock settings",
-    href: "/products",
-    icon: "📦",
-  },
-  {
-    title: "POS Sales",
-    description: "Create sales and process customer payments",
-    href: "/pos",
-    icon: "🛒",
-  },
-  {
-    title: "Inventory",
-    description: "Monitor stock and movement history",
-    href: "/inventory",
-    icon: "📊",
-  },
-  {
-    title: "Stores",
-    description: "Manage supermarket branches",
-    href: "/stores",
-    icon: "🏪",
-  },
-  {
-    title: "Suppliers",
-    description: "Manage suppliers and payment terms",
-    href: "/suppliers",
-    icon: "🚚",
-  },
-  {
-    title: "Customers",
-    description: "Manage customers and loyalty information",
-    href: "/customers",
-    icon: "👥",
-  },
-  {
-    title: "Purchases",
-    description: "Track purchases and supplier invoices",
-    href: "/purchases",
-    icon: "🧾",
-  },
-  {
-    title: "Payments",
-    description: "Track sales payment transactions",
-    href: "/payments",
-    icon: "💳",
-  },
-  {
-    title: "Returns",
-    description: "Manage customer and supplier returns",
-    href: "/returns",
-    icon: "↩️",
-  },
-  {
-    title: "Expenses",
-    description: "Track business expenses",
-    href: "/expenses",
-    icon: "💰",
-  },
-  {
-    title: "Stock Transfers",
-    description: "Transfer inventory between stores",
-    href: "/stock-transfers",
-    icon: "🔄",
-  },
-  {
-    title: "Reports",
-    description: "View business reports and analytics",
-    href: "/reports",
-    icon: "📈",
-  },
+const menuItems = [
+  { name: "Products", href: "/products", icon: "📦" },
+  { name: "POS Sales", href: "/pos", icon: "🛒" },
+  { name: "Inventory", href: "/inventory", icon: "📊" },
+  { name: "Stores", href: "/stores", icon: "🏪" },
+  { name: "Suppliers", href: "/suppliers", icon: "🚚" },
+  { name: "Customers", href: "/customers", icon: "👥" },
+  { name: "Purchases", href: "/purchases", icon: "🧾" },
+  { name: "Payments", href: "/payments", icon: "💳" },
+  { name: "Returns", href: "/returns", icon: "↩️" },
+  { name: "Expenses", href: "/expenses", icon: "💰" },
+  { name: "Stock Transfers", href: "/stock-transfers", icon: "🔄" },
+  { name: "AI Insights", href: "/ai-insights", icon: "🤖" },
+  { name: "Reports", href: "/reports", icon: "📈" },
+  { name: "AI Assistant", href: "/ai-assistant", icon: "✨" },
 ];
 
 export default function DashboardPage() {
-  const supabase = createClient();
-
   const [stats, setStats] = useState<DashboardStats>(defaultStats);
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState("Business Owner");
-  const [error, setError] = useState("");
 
   useEffect(() => {
     loadDashboard();
@@ -111,26 +54,28 @@ export default function DashboardPage() {
 
   async function loadDashboard() {
     setLoading(true);
-    setError("");
 
     try {
+      const supabase = createClient();
+
       const {
         data: { user },
       } = await supabase.auth.getUser();
 
       if (!user) {
-        setError("Please login first.");
+        setLoading(false);
         return;
       }
 
-      const { data: profile, error: profileError } = await supabase
+      const { data: profile } = await supabase
         .from("user_profiles")
         .select("tenant_id, full_name")
         .eq("id", user.id)
-        .single();
+        .maybeSingle();
 
-      if (profileError || !profile?.tenant_id) {
-        throw new Error("Tenant information not found.");
+      if (!profile?.tenant_id) {
+        setLoading(false);
+        return;
       }
 
       if (profile.full_name) {
@@ -139,734 +84,354 @@ export default function DashboardPage() {
 
       const tenantId = profile.tenant_id;
 
-      /* Products */
-      const { data: products, error: productsError } = await supabase
-        .from("products")
-        .select(
-          "id,name,sku,purchase_price,selling_price,reorder_level,is_active"
-        )
-        .eq("tenant_id", tenantId)
-        .eq("is_active", true);
+      const [
+        productsResult,
+        storesResult,
+        suppliersResult,
+        customersResult,
+        salesResult,
+        stockResult,
+      ] = await Promise.all([
+        supabase
+          .from("products")
+          .select("id, reorder_level")
+          .eq("tenant_id", tenantId)
+          .eq("is_active", true),
 
-      if (productsError) throw productsError;
+        supabase
+          .from("stores")
+          .select("id")
+          .eq("tenant_id", tenantId)
+          .eq("is_active", true),
 
-      /* Stores */
-      const { count: storesCount, error: storesError } = await supabase
-        .from("stores")
-        .select("id", { count: "exact", head: true })
-        .eq("tenant_id", tenantId)
-        .eq("is_active", true);
+        supabase
+          .from("suppliers")
+          .select("id")
+          .eq("tenant_id", tenantId)
+          .eq("is_active", true),
 
-      if (storesError) throw storesError;
-
-      /* Customers */
-      const { count: customersCount, error: customersError } =
-        await supabase
+        supabase
           .from("customers")
-          .select("id", { count: "exact", head: true })
-          .eq("tenant_id", tenantId);
+          .select("id")
+          .eq("tenant_id", tenantId),
 
-      if (customersError) throw customersError;
+        supabase
+          .from("sales")
+          .select("id, total_amount")
+          .eq("tenant_id", tenantId)
+          .eq("status", "completed"),
 
-      /* Sales */
-      const { data: sales, error: salesError } = await supabase
-        .from("sales")
-        .select("id,total_amount,status,sale_date")
-        .eq("tenant_id", tenantId)
-        .eq("status", "completed");
+        supabase
+          .from("stock_movements")
+          .select("product_id, movement_type, quantity")
+          .eq("tenant_id", tenantId),
+      ]);
 
-      if (salesError) throw salesError;
+      const products = productsResult.data ?? [];
+      const stores = storesResult.data ?? [];
+      const suppliers = suppliersResult.data ?? [];
+      const customers = customersResult.data ?? [];
+      const sales = salesResult.data ?? [];
+      const movements = stockResult.data ?? [];
 
-      /* Sale Items */
-      const { data: saleItems, error: saleItemsError } = await supabase
-        .from("sale_items")
-        .select("product_id,quantity,unit_price,total_price,sale_id")
-        .eq("tenant_id", tenantId);
-
-      if (saleItemsError) throw saleItemsError;
-
-      /* Stock Movements */
-      const { data: movements, error: movementsError } = await supabase
-        .from("stock_movements")
-        .select("product_id,quantity")
-        .eq("tenant_id", tenantId);
-
-      if (movementsError) throw movementsError;
-
-      /* Calculate current stock */
       const stockMap: Record<string, number> = {};
 
-      (movements || []).forEach((movement) => {
-        stockMap[movement.product_id] =
-          (stockMap[movement.product_id] || 0) +
-          Number(movement.quantity || 0);
-      });
+      for (const movement of movements) {
+        const productId = movement.product_id;
 
-      let lowStock = 0;
+        if (!stockMap[productId]) {
+          stockMap[productId] = 0;
+        }
 
-      (products || []).forEach((product) => {
-        const stock = stockMap[product.id] || 0;
+        const quantity = Number(movement.quantity) || 0;
 
         if (
-          Number(product.reorder_level || 0) > 0 &&
-          stock <= Number(product.reorder_level || 0)
+          movement.movement_type === "purchase" ||
+          movement.movement_type === "customer_return" ||
+          movement.movement_type === "transfer_in"
         ) {
-          lowStock++;
+          stockMap[productId] += Math.abs(quantity);
+        } else if (
+          movement.movement_type === "sale" ||
+          movement.movement_type === "supplier_return" ||
+          movement.movement_type === "damage" ||
+          movement.movement_type === "transfer_out"
+        ) {
+          stockMap[productId] -= Math.abs(quantity);
+        } else {
+          stockMap[productId] += quantity;
         }
-      });
+      }
 
-      /* Today's sales */
-      const today = new Date().toISOString().split("T")[0];
-
-      const todaysSales = (sales || []).filter((sale) =>
-        String(sale.sale_date).startsWith(today)
-      );
-
-      const todaySalesAmount = todaysSales.reduce(
-        (sum, sale) => sum + Number(sale.total_amount || 0),
+      const stockUnits = Object.values(stockMap).reduce(
+        (total, value) => total + Math.max(0, value),
         0
       );
 
-      /* Estimated profit */
-      const productCostMap: Record<string, number> = {};
+      const lowStock = products.filter((product) => {
+        const currentStock = stockMap[product.id] ?? 0;
+        return currentStock <= Number(product.reorder_level || 0);
+      }).length;
 
-      (products || []).forEach((product) => {
-        productCostMap[product.id] = Number(product.purchase_price || 0);
-      });
-
-      const saleIds = new Set(todaysSales.map((sale) => sale.id));
-
-      const todaySaleItems = (saleItems || []).filter((item) =>
-        saleIds.has(item.sale_id)
-      );
-
-      const estimatedCost = todaySaleItems.reduce(
-        (sum, item) =>
-          sum +
-          Number(item.quantity || 0) *
-            Number(productCostMap[item.product_id] || 0),
+      const revenue = sales.reduce(
+        (total, sale) => total + Number(sale.total_amount || 0),
         0
       );
-
-      const estimatedProfit = todaySalesAmount - estimatedCost;
 
       setStats({
-        sales: todaySalesAmount,
-        profit: estimatedProfit,
-        products: products?.length || 0,
+        products: products.length,
+        stores: stores.length,
+        suppliers: suppliers.length,
+        customers: customers.length,
+        sales: sales.length,
+        revenue,
+        stockUnits,
         lowStock,
-        stores: storesCount || 0,
-        customers: customersCount || 0,
       });
-    } catch (err) {
-      console.error("Dashboard error:", err);
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to load dashboard data."
-      );
+    } catch (error) {
+      console.error("Dashboard loading error:", error);
+      setStats(defaultStats);
     } finally {
       setLoading(false);
     }
   }
 
-  const statCards = [
-    {
-      title: "Today's Sales",
-      value: `₹${stats.sales.toLocaleString("en-IN")}`,
-      icon: "₹",
-      description: "Completed sales today",
-      background: "#eef2ff",
-      iconBackground: "#4f46e5",
-    },
-    {
-      title: "Estimated Profit",
-      value: `₹${stats.profit.toLocaleString("en-IN")}`,
-      icon: "↗",
-      description: "Estimated from today's sales",
-      background: "#ecfdf5",
-      iconBackground: "#059669",
-    },
-    {
-      title: "Active Products",
-      value: stats.products.toString(),
-      icon: "P",
-      description: "Products in catalog",
-      background: "#eff6ff",
-      iconBackground: "#2563eb",
-    },
-    {
-      title: "Low Stock",
-      value: stats.lowStock.toString(),
-      icon: "!",
-      description: "Products at reorder level",
-      background: "#fff7ed",
-      iconBackground: "#ea580c",
-    },
-    {
-      title: "Active Stores",
-      value: stats.stores.toString(),
-      icon: "S",
-      description: "Operating stores",
-      background: "#f5f3ff",
-      iconBackground: "#7c3aed",
-    },
-    {
-      title: "Customers",
-      value: stats.customers.toString(),
-      icon: "C",
-      description: "Registered customers",
-      background: "#f0fdfa",
-      iconBackground: "#0f766e",
-    },
-  ];
-
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: "#f1f5f9",
-        color: "#0f172a",
-      }}
-    >
-      {/* Header */}
-      <header
-        style={{
-          background: "#ffffff",
-          borderBottom: "1px solid #e2e8f0",
-          padding: "16px 24px",
-          position: "sticky",
-          top: 0,
-          zIndex: 20,
-        }}
-      >
-        <div
-          style={{
-            maxWidth: "1400px",
-            margin: "0 auto",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: "20px",
-          }}
-        >
-          <Link
-            href="/dashboard"
-            style={{
-              textDecoration: "none",
-              color: "#0f172a",
-              fontWeight: 900,
-              fontSize: "20px",
-            }}
-          >
-            RetailPilot <span style={{ color: "#4f46e5" }}>AI</span>
-          </Link>
+    <main className="min-h-screen bg-slate-950 text-white">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        {/* Header */}
+        <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-medium text-cyan-400">
+              RetailPilot AI
+            </p>
 
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "12px",
-            }}
-          >
-            <span
-              style={{
-                fontSize: "13px",
-                color: "#64748b",
-              }}
-            >
+            <h1 className="mt-1 text-2xl font-bold sm:text-3xl">
               Welcome, {userName}
-            </span>
+            </h1>
+
+            <p className="mt-1 text-sm text-slate-400">
+              Intelligent retail management dashboard
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Link
+              href="/ai-assistant"
+              className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-sm font-semibold text-cyan-300 transition hover:bg-cyan-500/20"
+            >
+              ✨ AI Assistant
+            </Link>
 
             <button
               onClick={loadDashboard}
-              style={{
-                background: "#ffffff",
-                color: "#334155",
-                border: "1px solid #cbd5e1",
-                borderRadius: "9px",
-                padding: "9px 14px",
-                cursor: "pointer",
-                fontWeight: 700,
-              }}
+              className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-white/10"
             >
-              Refresh
+              ↻ Refresh
             </button>
           </div>
-        </div>
-      </header>
-
-      <div
-        style={{
-          maxWidth: "1400px",
-          margin: "0 auto",
-          padding: "28px 24px 50px",
-        }}
-      >
-        {/* Hero */}
-        <section
-          style={{
-            background:
-              "linear-gradient(135deg, #111827 0%, #312e81 55%, #4f46e5 100%)",
-            borderRadius: "22px",
-            padding: "32px",
-            color: "#ffffff",
-            marginBottom: "24px",
-            boxShadow: "0 12px 35px rgba(30,41,59,0.18)",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "25px",
-              flexWrap: "wrap",
-            }}
-          >
-            <div>
-              <div
-                style={{
-                  fontSize: "13px",
-                  fontWeight: 800,
-                  letterSpacing: "1px",
-                  opacity: 0.75,
-                  marginBottom: "8px",
-                }}
-              >
-                BUSINESS OVERVIEW
-              </div>
-
-              <h1
-                style={{
-                  margin: 0,
-                  fontSize: "34px",
-                  lineHeight: 1.15,
-                  fontWeight: 900,
-                }}
-              >
-                Supermarket Dashboard
-              </h1>
-
-              <p
-                style={{
-                  margin: "10px 0 0",
-                  color: "#c7d2fe",
-                  fontSize: "15px",
-                  maxWidth: "650px",
-                }}
-              >
-                Monitor sales, inventory, customers and business performance
-                from one place.
-              </p>
-            </div>
-
-            <Link
-              href="/ai-assistant"
-              style={{
-                textDecoration: "none",
-                background: "#ffffff",
-                color: "#312e81",
-                padding: "13px 18px",
-                borderRadius: "11px",
-                fontWeight: 800,
-                display: "inline-block",
-              }}
-            >
-              ✨ Ask AI Assistant
-            </Link>
-          </div>
-        </section>
-
-        {/* Error */}
-        {error && (
-          <div
-            style={{
-              background: "#fff7ed",
-              border: "1px solid #fed7aa",
-              color: "#c2410c",
-              borderRadius: "12px",
-              padding: "14px 16px",
-              marginBottom: "20px",
-              fontWeight: 600,
-            }}
-          >
-            {error}
-          </div>
-        )}
+        </header>
 
         {/* KPI Cards */}
-        <section
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
-            gap: "16px",
-            marginBottom: "28px",
-          }}
-        >
-          {statCards.map((card) => (
-            <div
-              key={card.title}
-              style={{
-                background: card.background,
-                border: "1px solid #e2e8f0",
-                borderRadius: "16px",
-                padding: "20px",
-                minHeight: "130px",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "flex-start",
-                  gap: "10px",
-                }}
-              >
-                <div>
-                  <div
-                    style={{
-                      fontSize: "13px",
-                      color: "#475569",
-                      fontWeight: 700,
-                    }}
-                  >
-                    {card.title}
-                  </div>
+        <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <StatCard
+            title="Products"
+            value={stats.products}
+            icon="📦"
+            href="/products"
+            loading={loading}
+          />
 
-                  <div
-                    style={{
-                      marginTop: "8px",
-                      fontSize: "28px",
-                      color: "#0f172a",
-                      fontWeight: 900,
-                    }}
-                  >
-                    {loading ? "..." : card.value}
-                  </div>
-                </div>
+          <StatCard
+            title="Stores"
+            value={stats.stores}
+            icon="🏪"
+            href="/stores"
+            loading={loading}
+          />
 
-                <div
-                  style={{
-                    width: "38px",
-                    height: "38px",
-                    borderRadius: "10px",
-                    background: card.iconBackground,
-                    color: "#ffffff",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontWeight: 900,
-                  }}
-                >
-                  {card.icon}
-                </div>
-              </div>
+          <StatCard
+            title="Customers"
+            value={stats.customers}
+            icon="👥"
+            href="/customers"
+            loading={loading}
+          />
 
-              <div
-                style={{
-                  marginTop: "8px",
-                  color: "#64748b",
-                  fontSize: "12px",
-                }}
-              >
-                {card.description}
-              </div>
-            </div>
-          ))}
+          <StatCard
+            title="Suppliers"
+            value={stats.suppliers}
+            icon="🚚"
+            href="/suppliers"
+            loading={loading}
+          />
         </section>
 
-        {/* Quick Actions */}
-        <section
-          style={{
-            background: "#ffffff",
-            border: "1px solid #e2e8f0",
-            borderRadius: "18px",
-            padding: "24px",
-            marginBottom: "28px",
-          }}
-        >
-          <h2
-            style={{
-              margin: "0 0 18px",
-              fontSize: "21px",
-              fontWeight: 900,
-              color: "#0f172a",
-            }}
-          >
-            Quick Actions
-          </h2>
+        {/* Business Summary */}
+        <section className="mt-6 grid gap-4 lg:grid-cols-3">
+          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+            <p className="text-sm text-slate-400">Completed Sales</p>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns:
-                "repeat(auto-fit, minmax(190px, 1fr))",
-              gap: "12px",
-            }}
-          >
-            <Link
-              href="/pos"
-              style={{
-                textDecoration: "none",
-                background: "#4f46e5",
-                color: "#ffffff",
-                padding: "15px",
-                borderRadius: "11px",
-                fontWeight: 800,
-              }}
-            >
-              🛒 New Sale
-            </Link>
+            <p className="mt-2 text-3xl font-bold">
+              {loading ? "—" : stats.sales}
+            </p>
 
-            <Link
-              href="/products"
-              style={{
-                textDecoration: "none",
-                background: "#eef2ff",
-                color: "#3730a3",
-                padding: "15px",
-                borderRadius: "11px",
-                fontWeight: 800,
-              }}
-            >
-              📦 Manage Products
-            </Link>
+            <p className="mt-2 text-xs text-slate-500">
+              Total completed transactions
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+            <p className="text-sm text-slate-400">Revenue</p>
+
+            <p className="mt-2 text-3xl font-bold text-emerald-400">
+              {loading ? "—" : `₹${stats.revenue.toFixed(2)}`}
+            </p>
+
+            <p className="mt-2 text-xs text-slate-500">
+              From completed sales
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+            <p className="text-sm text-slate-400">Stock Units</p>
+
+            <p className="mt-2 text-3xl font-bold text-cyan-400">
+              {loading ? "—" : Math.round(stats.stockUnits)}
+            </p>
+
+            <p className="mt-2 text-xs text-slate-500">
+              Current inventory quantity
+            </p>
+          </div>
+        </section>
+
+        {/* Low Stock Alert */}
+        <section className="mt-6 rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-slate-300">
+                Inventory Health
+              </p>
+
+              <h2 className="mt-1 text-xl font-bold">
+                {loading
+                  ? "Checking inventory..."
+                  : stats.lowStock > 0
+                    ? `${stats.lowStock} product${stats.lowStock > 1 ? "s" : ""} need attention`
+                    : "Inventory looks healthy"}
+              </h2>
+            </div>
 
             <Link
               href="/inventory"
-              style={{
-                textDecoration: "none",
-                background: "#ecfdf5",
-                color: "#047857",
-                padding: "15px",
-                borderRadius: "11px",
-                fontWeight: 800,
-              }}
+              className="rounded-xl bg-cyan-500 px-4 py-2 text-center text-sm font-bold text-slate-950 transition hover:bg-cyan-400"
             >
-              📊 Check Inventory
-            </Link>
-
-            <Link
-              href="/reports"
-              style={{
-                textDecoration: "none",
-                background: "#eff6ff",
-                color: "#1d4ed8",
-                padding: "15px",
-                borderRadius: "11px",
-                fontWeight: 800,
-              }}
-            >
-              📈 View Reports
+              Open Inventory
             </Link>
           </div>
         </section>
 
         {/* Modules */}
-        <section>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginBottom: "16px",
-            }}
-          >
-            <div>
-              <h2
-                style={{
-                  margin: 0,
-                  fontSize: "23px",
-                  fontWeight: 900,
-                  color: "#0f172a",
-                }}
-              >
-                Business Modules
-              </h2>
-
-              <p
-                style={{
-                  margin: "5px 0 0",
-                  color: "#64748b",
-                  fontSize: "14px",
-                }}
-              >
-                Access all RetailPilot management modules.
-              </p>
-            </div>
+        <section className="mt-8">
+          <div className="mb-4">
+            <h2 className="text-xl font-bold">Retail Modules</h2>
+            <p className="mt-1 text-sm text-slate-400">
+              Manage your complete supermarket workflow
+            </p>
           </div>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns:
-                "repeat(auto-fit, minmax(250px, 1fr))",
-              gap: "16px",
-            }}
-          >
-            {modules.map((module) => (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            {menuItems.map((item) => (
               <Link
-                key={module.title}
-                href={module.href}
-                style={{
-                  textDecoration: "none",
-                  background: "#ffffff",
-                  border: "1px solid #e2e8f0",
-                  borderRadius: "16px",
-                  padding: "20px",
-                  color: "#0f172a",
-                  display: "block",
-                  transition: "transform 0.15s ease",
-                }}
+                key={item.href}
+                href={item.href}
+                className="group rounded-2xl border border-white/10 bg-white/[0.04] p-4 transition hover:-translate-y-1 hover:border-cyan-400/30 hover:bg-white/[0.07]"
               >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "flex-start",
-                    gap: "14px",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: "46px",
-                      height: "46px",
-                      borderRadius: "12px",
-                      background: "#eef2ff",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: "22px",
-                      flexShrink: 0,
-                    }}
-                  >
-                    {module.icon}
-                  </div>
+                <div className="text-2xl">{item.icon}</div>
 
-                  <div>
-                    <h3
-                      style={{
-                        margin: 0,
-                        fontSize: "16px",
-                        fontWeight: 850,
-                        color: "#0f172a",
-                      }}
-                    >
-                      {module.title}
-                    </h3>
+                <p className="mt-3 text-sm font-semibold text-slate-200 group-hover:text-white">
+                  {item.name}
+                </p>
 
-                    <p
-                      style={{
-                        margin: "6px 0 0",
-                        fontSize: "13px",
-                        lineHeight: 1.5,
-                        color: "#64748b",
-                      }}
-                    >
-                      {module.description}
-                    </p>
-                  </div>
-                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  Open module →
+                </p>
               </Link>
             ))}
           </div>
         </section>
 
-        {/* AI Section */}
-        <section
-          style={{
-            marginTop: "28px",
-            background:
-              "linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)",
-            borderRadius: "18px",
-            padding: "26px",
-            color: "#ffffff",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: "20px",
-              flexWrap: "wrap",
-            }}
-          >
+        {/* AI Recommendation */}
+        <section className="mt-8 rounded-2xl border border-cyan-400/20 bg-gradient-to-br from-cyan-500/10 to-blue-500/5 p-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <div
-                style={{
-                  fontSize: "13px",
-                  fontWeight: 800,
-                  color: "#c7d2fe",
-                  marginBottom: "6px",
-                }}
-              >
-                INTELLIGENT RETAIL
-              </div>
-
-              <h2
-                style={{
-                  margin: 0,
-                  fontSize: "23px",
-                  fontWeight: 900,
-                }}
-              >
-                AI Business Assistant
-              </h2>
-
-              <p
-                style={{
-                  margin: "7px 0 0",
-                  color: "#c7d2fe",
-                  fontSize: "14px",
-                  maxWidth: "650px",
-                }}
-              >
-                Ask questions about profitability, low stock, supplier
-                outstanding and business performance using live database data.
+              <p className="text-xs font-semibold uppercase tracking-wider text-cyan-400">
+                AI Intelligence
               </p>
 
-              <p
-                style={{
-                  margin: "12px 0 0",
-                  color: "#a5b4fc",
-                  fontSize: "12px",
-                }}
-              >
-                AI-generated recommendation • Verify important decisions
-                against business records.
+              <h2 className="mt-1 text-lg font-bold">
+                Ask RetailPilot AI about your business
+              </h2>
+
+              <p className="mt-1 max-w-2xl text-sm text-slate-400">
+                Get live insights about profitability, low stock, supplier
+                payments and business performance.
+              </p>
+
+              <p className="mt-3 text-xs text-slate-500">
+                AI-generated recommendation. Verify important business
+                decisions against your live records.
               </p>
             </div>
 
             <Link
               href="/ai-assistant"
-              style={{
-                textDecoration: "none",
-                background: "#ffffff",
-                color: "#312e81",
-                padding: "13px 18px",
-                borderRadius: "10px",
-                fontWeight: 800,
-              }}
+              className="whitespace-nowrap rounded-xl border border-cyan-400/30 bg-cyan-400/10 px-5 py-3 text-sm font-bold text-cyan-300 transition hover:bg-cyan-400/20"
             >
-              Open AI Assistant →
+              Ask AI →
             </Link>
           </div>
         </section>
 
         {/* Footer */}
-        <div
-          style={{
-            textAlign: "center",
-            marginTop: "30px",
-            color: "#94a3b8",
-            fontSize: "12px",
-          }}
-        >
-          RetailPilot AI • Multi-tenant Retail Management SaaS
-        </div>
+        <footer className="mt-10 border-t border-white/10 pt-5 text-center text-xs text-slate-600">
+          RetailPilot AI · Intelligent Retail Management SaaS
+        </footer>
       </div>
     </main>
+  );
+}
+
+function StatCard({
+  title,
+  value,
+  icon,
+  href,
+  loading,
+}: {
+  title: string;
+  value: number;
+  icon: string;
+  href: string;
+  loading: boolean;
+}) {
+  return (
+    <Link
+      href={href}
+      className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 transition hover:-translate-y-1 hover:border-cyan-400/30 hover:bg-white/[0.07]"
+    >
+      <div className="flex items-center justify-between">
+        <span className="text-2xl">{icon}</span>
+
+        <span className="text-xs text-slate-500">View →</span>
+      </div>
+
+      <p className="mt-4 text-sm text-slate-400">{title}</p>
+
+      <p className="mt-1 text-2xl font-bold">
+        {loading ? "—" : value}
+      </p>
+    </Link>
   );
 }
