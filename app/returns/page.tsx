@@ -1,669 +1,485 @@
-"use client";
+"use client"
 
-import { FormEvent, useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useEffect, useState } from "react"
+import { createClient } from "@/lib/supabase/client"
 
 type Sale = {
-  id: string;
-  invoice_number: string;
-};
-
-type Customer = {
-  id: string;
-  name: string;
-};
-
-type Store = {
-  id: string;
-  name: string;
-};
-
-type Product = {
-  id: string;
-  name: string;
-  sku: string;
-  selling_price: number;
-};
+  id: string
+  invoice_no: string | null
+  total_amount: number
+  created_at: string
+}
 
 type ReturnRecord = {
-  id: string;
-  return_type: string;
-  reason: string | null;
-  total_amount: number;
-  status: string;
-  created_at: string;
-  sales: Sale | null;
-  customers: Customer | null;
-};
+  id: string
+  sale_id: string | null
+  return_type: string
+  reason: string | null
+  total_amount: number
+  created_at: string
+  sale?: {
+    invoice_no: string | null
+  } | null
+}
 
 export default function ReturnsPage() {
-  const supabase = createClient();
+  const [returns, setReturns] = useState<ReturnRecord[]>([])
+  const [sales, setSales] = useState<Sale[]>([])
 
-  const [returns, setReturns] = useState<ReturnRecord[]>([]);
-  const [sales, setSales] = useState<Sale[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [stores, setStores] = useState<Store[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
+  const [saleId, setSaleId] = useState("")
+  const [returnType, setReturnType] = useState("customer_return")
+  const [reason, setReason] = useState("")
+  const [amount, setAmount] = useState("")
 
-  const [tenantId, setTenantId] = useState<string | null>(null);
-
-  const [storeId, setStoreId] = useState("");
-  const [saleId, setSaleId] = useState("");
-  const [customerId, setCustomerId] = useState("");
-  const [productId, setProductId] = useState("");
-  const [quantity, setQuantity] = useState("");
-  const [unitPrice, setUnitPrice] = useState("");
-  const [returnType, setReturnType] = useState("customer_return");
-  const [reason, setReason] = useState("");
-
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState("")
+  const [error, setError] = useState("")
 
   useEffect(() => {
-    loadData();
-  }, []);
+    loadData()
+  }, [])
+
+  async function getTenantId() {
+    const supabase = createClient()
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      throw new Error("Please login first.")
+    }
+
+    const { data: profile, error } = await supabase
+      .from("user_profiles")
+      .select("tenant_id")
+      .eq("id", user.id)
+      .single()
+
+    if (error || !profile?.tenant_id) {
+      throw new Error("Business profile not found.")
+    }
+
+    return profile.tenant_id
+  }
 
   async function loadData() {
-    setLoading(true);
-    setMessage("");
-
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      setLoading(true)
+      setError("")
 
-      if (!user) {
-        setMessage("Please login first.");
-        setLoading(false);
-        return;
-      }
+      const supabase = createClient()
+      const tenantId = await getTenantId()
 
-      const { data: profile, error: profileError } = await supabase
-        .from("user_profiles")
-        .select("tenant_id")
-        .eq("id", user.id)
-        .single();
-
-      if (profileError || !profile?.tenant_id) {
-        setMessage("Tenant profile not found.");
-        setLoading(false);
-        return;
-      }
-
-      const currentTenantId = profile.tenant_id;
-      setTenantId(currentTenantId);
-
-      const [
-        returnsResult,
-        salesResult,
-        customersResult,
-        storesResult,
-        productsResult,
-      ] = await Promise.all([
-        supabase
-          .from("returns")
-          .select(
-            `
-              id,
-              return_type,
-              reason,
-              total_amount,
-              status,
-              created_at,
-              sales (
-                id,
-                invoice_number
-              ),
-              customers (
-                id,
-                name
-              )
-            `
-          )
-          .eq("tenant_id", currentTenantId)
-          .order("created_at", { ascending: false }),
-
-        supabase
-          .from("sales")
-          .select("id, invoice_number")
-          .eq("tenant_id", currentTenantId)
-          .eq("status", "completed")
-          .order("sale_date", { ascending: false }),
-
-        supabase
-          .from("customers")
-          .select("id, name")
-          .eq("tenant_id", currentTenantId)
-          .order("name"),
-
-        supabase
-          .from("stores")
-          .select("id, name")
-          .eq("tenant_id", currentTenantId)
-          .eq("is_active", true)
-          .order("name"),
-
-        supabase
-          .from("products")
-          .select("id, name, sku, selling_price")
-          .eq("tenant_id", currentTenantId)
-          .eq("is_active", true)
-          .order("name"),
-      ]);
-
-      if (returnsResult.error) throw returnsResult.error;
-      if (salesResult.error) throw salesResult.error;
-      if (customersResult.error) throw customersResult.error;
-      if (storesResult.error) throw storesResult.error;
-      if (productsResult.error) throw productsResult.error;
-
-      const returnData: ReturnRecord[] = (
-        returnsResult.data ?? []
-      ).map((record: any) => ({
-        id: record.id,
-        return_type: record.return_type,
-        reason: record.reason ?? null,
-        total_amount: Number(record.total_amount ?? 0),
-        status: record.status,
-        created_at: record.created_at,
-
-        sales: Array.isArray(record.sales)
-          ? record.sales[0] ?? null
-          : record.sales ?? null,
-
-        customers: Array.isArray(record.customers)
-          ? record.customers[0] ?? null
-          : record.customers ?? null,
-      }));
-
-      setReturns(returnData);
-      setSales((salesResult.data ?? []) as Sale[]);
-      setCustomers((customersResult.data ?? []) as Customer[]);
-      setStores((storesResult.data ?? []) as Store[]);
-
-      setProducts(
-        (productsResult.data ?? []).map((product: any) => ({
-          id: product.id,
-          name: product.name,
-          sku: product.sku,
-          selling_price: Number(product.selling_price ?? 0),
-        }))
-      );
-    } catch (error) {
-      console.error("Returns load error:", error);
-
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "Unable to load returns."
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function handleProductChange(value: string) {
-    setProductId(value);
-
-    const product = products.find((item) => item.id === value);
-
-    if (product) {
-      setUnitPrice(String(product.selling_price ?? ""));
-    }
-  }
-
-  async function addReturn(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    if (!tenantId) {
-      setMessage("Tenant not found.");
-      return;
-    }
-
-    if (!storeId || !productId) {
-      setMessage("Please select store and product.");
-      return;
-    }
-
-    const qty = Number(quantity);
-    const price = Number(unitPrice);
-
-    if (!qty || qty <= 0) {
-      setMessage("Enter a valid quantity.");
-      return;
-    }
-
-    if (!price || price <= 0) {
-      setMessage("Enter a valid unit price.");
-      return;
-    }
-
-    setSaving(true);
-    setMessage("");
-
-    try {
-      const totalAmount = qty * price;
-
-      const { data: returnRecord, error: returnError } =
-        await supabase
-          .from("returns")
-          .insert({
-            tenant_id: tenantId,
-            store_id: storeId,
-            sale_id: saleId || null,
-            customer_id: customerId || null,
-            return_type: returnType,
-            reason: reason.trim() || null,
-            total_amount: totalAmount,
-            status: "completed",
-          })
-          .select("id")
-          .single();
+      const { data: returnData, error: returnError } = await supabase
+        .from("returns")
+        .select(
+          `
+          id,
+          sale_id,
+          return_type,
+          reason,
+          total_amount,
+          created_at,
+          sale:sales!returns_sale_id_fkey(invoice_no)
+        `
+        )
+        .eq("tenant_id", tenantId)
+        .order("created_at", { ascending: false })
 
       if (returnError) {
-        throw returnError;
+        throw returnError
       }
 
-      const { error: itemError } = await supabase
-        .from("return_items")
-        .insert({
-          tenant_id: tenantId,
-          return_id: returnRecord.id,
-          product_id: productId,
-          quantity: qty,
-          unit_price: price,
-        });
+      const { data: salesData, error: salesError } = await supabase
+        .from("sales")
+        .select("id, invoice_no, total_amount, created_at")
+        .eq("tenant_id", tenantId)
+        .eq("status", "completed")
+        .order("created_at", { ascending: false })
 
-      if (itemError) {
-        throw itemError;
+      if (salesError) {
+        throw salesError
       }
 
-      const { error: movementError } = await supabase
-        .from("stock_movements")
-        .insert({
-          tenant_id: tenantId,
-          store_id: storeId,
-          product_id: productId,
-          movement_type: "customer_return",
-          quantity: qty,
-          reference_id: returnRecord.id,
-          notes: reason.trim() || "Customer return",
-        });
+      const formattedReturns = (returnData || []).map((item: any) => ({
+        ...item,
+        sale: Array.isArray(item.sale)
+          ? item.sale[0] || null
+          : item.sale || null,
+      }))
 
-      if (movementError) {
-        throw movementError;
-      }
-
-      setMessage("Return added successfully.");
-
-      setStoreId("");
-      setSaleId("");
-      setCustomerId("");
-      setProductId("");
-      setQuantity("");
-      setUnitPrice("");
-      setReturnType("customer_return");
-      setReason("");
-
-      await loadData();
-    } catch (error) {
-      console.error("Add return error:", error);
-
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "Unable to add return."
-      );
+      setReturns(formattedReturns)
+      setSales(salesData || [])
+    } catch (err: any) {
+      console.error(err)
+      setError(err?.message || "Unable to load returns.")
     } finally {
-      setSaving(false);
+      setLoading(false)
     }
   }
 
-  const totalReturns = returns.reduce(
-    (sum, item) => sum + Number(item.total_amount || 0),
-    0
-  );
+  async function createReturn() {
+    try {
+      setSaving(true)
+      setMessage("")
+      setError("")
 
-  const completedReturns = returns.filter(
-    (item) => item.status.toLowerCase() === "completed"
-  );
+      if (!saleId) {
+        setError("Please select a sale.")
+        return
+      }
 
-  const pendingReturns = returns.filter(
-    (item) => item.status.toLowerCase() === "pending"
-  );
+      const returnAmount = Number(amount)
+
+      if (!returnAmount || returnAmount <= 0) {
+        setError("Return amount must be greater than zero.")
+        return
+      }
+
+      const selectedSale = sales.find((sale) => sale.id === saleId)
+
+      if (!selectedSale) {
+        setError("Selected sale not found.")
+        return
+      }
+
+      if (returnAmount > Number(selectedSale.total_amount)) {
+        setError("Return amount cannot exceed the sale amount.")
+        return
+      }
+
+      const supabase = createClient()
+      const tenantId = await getTenantId()
+
+      const { error: insertError } = await supabase
+        .from("returns")
+        .insert({
+          tenant_id: tenantId,
+          sale_id: saleId,
+          return_type: returnType,
+          reason: reason.trim() || null,
+          total_amount: returnAmount,
+        })
+
+      if (insertError) {
+        throw insertError
+      }
+
+      setMessage("Return created successfully.")
+      setSaleId("")
+      setReturnType("customer_return")
+      setReason("")
+      setAmount("")
+
+      await loadData()
+    } catch (err: any) {
+      console.error(err)
+      setError(err?.message || "Unable to create return.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function getTypeClass(type: string) {
+    if (type === "customer_return") {
+      return "bg-orange-950 text-orange-400"
+    }
+
+    if (type === "supplier_return") {
+      return "bg-purple-950 text-purple-400"
+    }
+
+    return "bg-slate-800 text-slate-300"
+  }
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 md:px-8">
+    <main className="min-h-screen bg-slate-950 px-4 py-8 text-white sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl">
-        {/* Header */}
-        <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-sm font-semibold text-indigo-600">
-              RETAILPILOT AI
+            <p className="text-sm font-semibold text-cyan-400">
+              SALES OPERATIONS
             </p>
 
-            <h1 className="mt-1 text-3xl font-bold tracking-tight">
+            <h1 className="mt-1 text-3xl font-bold">
               Returns
             </h1>
 
-            <p className="mt-1 text-sm text-slate-500">
-              Manage customer returns and returned inventory.
+            <p className="mt-2 text-sm text-slate-400">
+              Manage customer and supplier returns with a clear audit trail.
             </p>
           </div>
 
           <button
             onClick={loadData}
-            className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+            className="rounded-xl border border-slate-700 bg-slate-900 px-5 py-3 text-sm font-semibold hover:bg-slate-800"
           >
-            Refresh Data
+            Refresh
           </button>
         </div>
 
-        {/* Message */}
         {message && (
-          <div className="mb-6 rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm font-medium text-indigo-700">
+          <div className="mb-6 rounded-xl border border-emerald-800 bg-emerald-950/40 px-4 py-3 text-sm text-emerald-300">
             {message}
           </div>
         )}
 
-        {/* KPI */}
-        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-slate-500">Return Value</p>
-            <p className="mt-2 text-2xl font-bold">
-              ₹{totalReturns.toLocaleString("en-IN")}
-            </p>
+        {error && (
+          <div className="mb-6 rounded-xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-300">
+            {error}
           </div>
+        )}
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-slate-500">Total Returns</p>
-            <p className="mt-2 text-2xl font-bold">
-              {returns.length}
-            </p>
-          </div>
+        <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5 sm:p-6">
+          <h2 className="text-xl font-semibold">
+            Create Return
+          </h2>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-slate-500">Completed</p>
-            <p className="mt-2 text-2xl font-bold text-emerald-600">
-              {completedReturns.length}
-            </p>
-          </div>
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-slate-500">Pending</p>
-            <p className="mt-2 text-2xl font-bold text-amber-600">
-              {pendingReturns.length}
-            </p>
-          </div>
-        </div>
-
-        {/* Add Return */}
-        <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-          <div className="mb-5">
-            <h2 className="text-xl font-bold">Create Return</h2>
-
-            <p className="mt-1 text-sm text-slate-500">
-              Record a customer return and add the returned quantity back to inventory.
-            </p>
-          </div>
-
-          <form
-            onSubmit={addReturn}
-            className="grid gap-4 md:grid-cols-2 lg:grid-cols-3"
-          >
-            {/* Store */}
             <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Store
-              </label>
-
-              <select
-                value={storeId}
-                onChange={(e) => setStoreId(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-              >
-                <option value="">Select store</option>
-
-                {stores.map((store) => (
-                  <option key={store.id} value={store.id}>
-                    {store.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Sale */}
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Sale Invoice
+              <label className="mb-2 block text-sm text-slate-300">
+                Sale / Invoice
               </label>
 
               <select
                 value={saleId}
-                onChange={(e) => setSaleId(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                onChange={(e) => {
+                  setSaleId(e.target.value)
+
+                  const sale = sales.find(
+                    (item) => item.id === e.target.value
+                  )
+
+                  if (sale) {
+                    setAmount(String(sale.total_amount))
+                  }
+                }}
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white outline-none focus:border-cyan-500"
               >
-                <option value="">Optional</option>
+                <option value="">
+                  Select completed sale
+                </option>
 
                 {sales.map((sale) => (
                   <option key={sale.id} value={sale.id}>
-                    {sale.invoice_number}
+                    {sale.invoice_no || sale.id.slice(0, 8)} — ₹
+                    {Number(sale.total_amount).toFixed(2)}
                   </option>
                 ))}
               </select>
             </div>
 
-            {/* Customer */}
             <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Customer
-              </label>
-
-              <select
-                value={customerId}
-                onChange={(e) => setCustomerId(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-              >
-                <option value="">Optional</option>
-
-                {customers.map((customer) => (
-                  <option key={customer.id} value={customer.id}>
-                    {customer.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Product */}
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Product
-              </label>
-
-              <select
-                value={productId}
-                onChange={(e) => handleProductChange(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-              >
-                <option value="">Select product</option>
-
-                {products.map((product) => (
-                  <option key={product.id} value={product.id}>
-                    {product.name} — {product.sku}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Quantity */}
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Quantity
-              </label>
-
-              <input
-                type="number"
-                min="1"
-                value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-                placeholder="1"
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-              />
-            </div>
-
-            {/* Unit Price */}
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Unit Price (₹)
-              </label>
-
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={unitPrice}
-                onChange={(e) => setUnitPrice(e.target.value)}
-                placeholder="30"
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-              />
-            </div>
-
-            {/* Return Type */}
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+              <label className="mb-2 block text-sm text-slate-300">
                 Return Type
               </label>
 
               <select
                 value={returnType}
                 onChange={(e) => setReturnType(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white outline-none focus:border-cyan-500"
               >
                 <option value="customer_return">
                   Customer Return
                 </option>
+
                 <option value="supplier_return">
                   Supplier Return
                 </option>
               </select>
             </div>
 
-            {/* Reason */}
-            <div className="md:col-span-2">
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+          </div>
+
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+
+            <div>
+              <label className="mb-2 block text-sm text-slate-300">
+                Return Amount
+              </label>
+
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="0.00"
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white placeholder:text-slate-600 outline-none focus:border-cyan-500"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm text-slate-300">
                 Reason
               </label>
 
               <input
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                placeholder="Damaged, wrong product, customer changed mind..."
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                placeholder="Reason for return"
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white placeholder:text-slate-600 outline-none focus:border-cyan-500"
               />
             </div>
 
-            {/* Submit */}
-            <div className="flex items-end">
-              <button
-                type="submit"
-                disabled={saving}
-                className="w-full rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {saving ? "Saving..." : "Create Return"}
-              </button>
-            </div>
-          </form>
+          </div>
+
+          <div className="mt-6 flex justify-end">
+            <button
+              type="button"
+              onClick={createReturn}
+              disabled={saving}
+              className="rounded-xl bg-cyan-500 px-6 py-3 font-semibold text-slate-950 hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {saving ? "Creating..." : "Create Return"}
+            </button>
+          </div>
         </section>
 
-        {/* History */}
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 px-5 py-5 md:px-6">
-            <h2 className="text-xl font-bold">Return History</h2>
+        <section className="mt-8">
+          <div className="mb-4">
+            <h2 className="text-xl font-semibold">
+              Return History
+            </h2>
 
             <p className="mt-1 text-sm text-slate-500">
-              Recent return transactions.
+              Review previously recorded returns.
             </p>
           </div>
 
           {loading ? (
-            <div className="p-8 text-center text-sm text-slate-500">
+            <div className="rounded-2xl border border-slate-800 bg-slate-900 p-8 text-center text-slate-400">
               Loading returns...
             </div>
           ) : returns.length === 0 ? (
-            <div className="p-10 text-center">
-              <p className="font-semibold text-slate-700">
-                No returns found
+            <div className="rounded-2xl border border-slate-800 bg-slate-900 p-8 text-center">
+              <p className="font-medium">
+                No returns recorded yet.
               </p>
 
               <p className="mt-1 text-sm text-slate-500">
-                Create your first return using the form above.
+                Create a return above to see it here.
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[850px] text-left text-sm">
-                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                  <tr>
-                    <th className="px-5 py-4">Date</th>
-                    <th className="px-5 py-4">Invoice</th>
-                    <th className="px-5 py-4">Customer</th>
-                    <th className="px-5 py-4">Type</th>
-                    <th className="px-5 py-4">Amount</th>
-                    <th className="px-5 py-4">Status</th>
-                  </tr>
-                </thead>
+            <div className="space-y-4">
 
-                <tbody className="divide-y divide-slate-100">
-                  {returns.map((item) => (
-                    <tr
-                      key={item.id}
-                      className="transition hover:bg-slate-50"
-                    >
-                      <td className="px-5 py-4 text-slate-600">
-                        {new Date(item.created_at).toLocaleDateString(
-                          "en-IN"
-                        )}
-                      </td>
+              {returns.map((item) => (
+                <div
+                  key={item.id}
+                  className="rounded-2xl border border-slate-800 bg-slate-900 p-5"
+                >
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
 
-                      <td className="px-5 py-4 font-semibold text-slate-900">
-                        {item.sales?.invoice_number ?? "—"}
-                      </td>
+                    <div>
+                      <div className="flex flex-wrap items-center gap-3">
 
-                      <td className="px-5 py-4 text-slate-600">
-                        {item.customers?.name ?? "Walk-in Customer"}
-                      </td>
-
-                      <td className="px-5 py-4 capitalize text-slate-600">
-                        {item.return_type.replaceAll("_", " ")}
-                      </td>
-
-                      <td className="px-5 py-4 font-semibold text-slate-900">
-                        ₹
-                        {Number(item.total_amount).toLocaleString(
-                          "en-IN"
-                        )}
-                      </td>
-
-                      <td className="px-5 py-4">
                         <span
-                          className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-                            item.status.toLowerCase() === "completed"
-                              ? "bg-emerald-100 text-emerald-700"
-                              : "bg-amber-100 text-amber-700"
-                          }`}
+                          className={`rounded-full px-3 py-1 text-xs font-semibold uppercase ${getTypeClass(
+                            item.return_type
+                          )}`}
                         >
-                          {item.status}
+                          {item.return_type.replace("_", " ")}
                         </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+
+                        <span className="text-xs text-slate-500">
+                          {new Date(item.created_at).toLocaleString("en-IN")}
+                        </span>
+
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap gap-2 text-sm">
+                        <span className="text-slate-400">
+                          Invoice:
+                        </span>
+
+                        <span className="font-semibold">
+                          {item.sale?.invoice_no || "N/A"}
+                        </span>
+                      </div>
+
+                      {item.reason && (
+                        <p className="mt-2 text-sm text-slate-500">
+                          Reason: {item.reason}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="text-left lg:text-right">
+                      <p className="text-xs text-slate-500">
+                        Return Amount
+                      </p>
+
+                      <p className="mt-1 text-2xl font-bold text-orange-400">
+                        ₹{Number(item.total_amount).toFixed(2)}
+                      </p>
+                    </div>
+
+                  </div>
+                </div>
+              ))}
+
             </div>
           )}
         </section>
+
+        <section className="mt-8 rounded-2xl border border-slate-800 bg-slate-900 p-6">
+          <h2 className="text-lg font-semibold">
+            Return Management
+          </h2>
+
+          <div className="mt-5 grid gap-4 sm:grid-cols-3">
+
+            <div className="rounded-xl border border-slate-800 bg-slate-950 p-4">
+              <p className="text-sm text-slate-500">
+                Total Returns
+              </p>
+
+              <p className="mt-2 text-2xl font-bold">
+                {returns.length}
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-slate-800 bg-slate-950 p-4">
+              <p className="text-sm text-slate-500">
+                Customer Returns
+              </p>
+
+              <p className="mt-2 text-2xl font-bold">
+                {
+                  returns.filter(
+                    (item) =>
+                      item.return_type === "customer_return"
+                  ).length
+                }
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-slate-800 bg-slate-950 p-4">
+              <p className="text-sm text-slate-500">
+                Total Return Value
+              </p>
+
+              <p className="mt-2 text-2xl font-bold text-orange-400">
+                ₹
+                {returns
+                  .reduce(
+                    (sum, item) =>
+                      sum + Number(item.total_amount || 0),
+                    0
+                  )
+                  .toFixed(2)}
+              </p>
+            </div>
+
+          </div>
+        </section>
+
       </div>
     </main>
-  );
+  )
 }
