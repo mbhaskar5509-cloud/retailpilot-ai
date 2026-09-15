@@ -95,7 +95,7 @@ export default function ExpensesPage() {
     if (expenseResult.error) {
       setError(expenseResult.error.message)
     } else {
-      setExpenses((expenseResult.data as Expense[]) || [])
+      setExpenses((expenseResult.data as unknown as Expense[]) || [])
     }
 
     if (storeResult.error) {

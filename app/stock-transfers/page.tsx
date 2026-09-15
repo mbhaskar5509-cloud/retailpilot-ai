@@ -1,501 +1,474 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import { createClient } from "@/lib/supabase/client"
+import { FormEvent, useEffect, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 
 type Store = {
-  id: string
-  name: string
-}
+  id: string;
+  name: string;
+};
 
 type Product = {
-  id: string
-  name: string
-  sku: string
-}
+  id: string;
+  name: string;
+  sku: string;
+};
 
 type Transfer = {
-  id: string
-  from_store_id: string
-  to_store_id: string
-  status: string
-  notes: string | null
-  created_at: string
-  from_store: { name: string } | null
-  to_store: { name: string } | null
-}
+  id: string;
+  from_store_id: string;
+  to_store_id: string;
+  status: string;
+  notes: string | null;
+  created_at: string;
+  from_store: Store | null;
+  to_store: Store | null;
+};
+
+type TransferItem = {
+  id: string;
+  product_id: string;
+  quantity: number;
+};
 
 export default function StockTransfersPage() {
-  const supabase = createClient()
+  const supabase = createClient();
 
-  const [stores, setStores] = useState<Store[]>([])
-  const [products, setProducts] = useState<Product[]>([])
-  const [transfers, setTransfers] = useState<Transfer[]>([])
+  const [transfers, setTransfers] = useState<Transfer[]>([]);
+  const [stores, setStores] = useState<Store[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
 
-  const [fromStoreId, setFromStoreId] = useState("")
-  const [toStoreId, setToStoreId] = useState("")
-  const [productId, setProductId] = useState("")
-  const [quantity, setQuantity] = useState("1")
-  const [notes, setNotes] = useState("")
+  const [tenantId, setTenantId] = useState<string | null>(null);
 
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [message, setMessage] = useState("")
-  const [error, setError] = useState("")
+  const [fromStoreId, setFromStoreId] = useState("");
+  const [toStoreId, setToStoreId] = useState("");
+  const [productId, setProductId] = useState("");
+  const [quantity, setQuantity] = useState("");
+  const [notes, setNotes] = useState("");
 
-  async function getTenantId() {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    if (!user) return null
-
-    const { data: profile } = await supabase
-      .from("user_profiles")
-      .select("tenant_id")
-      .eq("id", user.id)
-      .single()
-
-    return profile?.tenant_id || null
-  }
-
-  async function loadData() {
-    setLoading(true)
-    setError("")
-
-    const tenantId = await getTenantId()
-
-    if (!tenantId) {
-      setError("User profile or tenant not found.")
-      setLoading(false)
-      return
-    }
-
-    const [storesResult, productsResult, transfersResult] =
-      await Promise.all([
-        supabase
-          .from("stores")
-          .select("id, name")
-          .eq("tenant_id", tenantId)
-          .eq("is_active", true)
-          .order("name"),
-
-        supabase
-          .from("products")
-          .select("id, name, sku")
-          .eq("tenant_id", tenantId)
-          .eq("is_active", true)
-          .order("name"),
-
-        supabase
-          .from("stock_transfers")
-          .select(`
-            id,
-            from_store_id,
-            to_store_id,
-            status,
-            notes,
-            created_at,
-            from_store:stores!stock_transfers_from_store_id_fkey (
-              name
-            ),
-            to_store:stores!stock_transfers_to_store_id_fkey (
-              name
-            )
-          `)
-          .eq("tenant_id", tenantId)
-          .order("created_at", { ascending: false }),
-      ])
-
-    if (storesResult.error) {
-      setError(storesResult.error.message)
-    } else {
-      setStores(storesResult.data || [])
-    }
-
-    if (productsResult.error) {
-      setError(productsResult.error.message)
-    } else {
-      setProducts(productsResult.data || [])
-    }
-
-    if (transfersResult.error) {
-      setError(transfersResult.error.message)
-    } else {
-      setTransfers((transfersResult.data as Transfer[]) || [])
-    }
-
-    setLoading(false)
-  }
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
-    loadData()
-  }, [])
+    loadData();
+  }, []);
 
-  async function createTransfer() {
-    setMessage("")
-    setError("")
+  async function loadData() {
+    setLoading(true);
+    setMessage("");
+
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        setMessage("Please login first.");
+        setLoading(false);
+        return;
+      }
+
+      const { data: profile, error: profileError } = await supabase
+        .from("user_profiles")
+        .select("tenant_id")
+        .eq("id", user.id)
+        .single();
+
+      if (profileError || !profile?.tenant_id) {
+        setMessage("Tenant profile not found.");
+        setLoading(false);
+        return;
+      }
+
+      const currentTenantId = profile.tenant_id;
+      setTenantId(currentTenantId);
+
+      const [transferResult, storeResult, productResult] =
+        await Promise.all([
+          supabase
+            .from("stock_transfers")
+            .select(
+              `
+                id,
+                from_store_id,
+                to_store_id,
+                status,
+                notes,
+                created_at,
+                from_store:stores!stock_transfers_from_store_id_fkey (
+                  id,
+                  name
+                ),
+                to_store:stores!stock_transfers_to_store_id_fkey (
+                  id,
+                  name
+                )
+              `
+            )
+            .eq("tenant_id", currentTenantId)
+            .order("created_at", { ascending: false }),
+
+          supabase
+            .from("stores")
+            .select("id, name")
+            .eq("tenant_id", currentTenantId)
+            .eq("is_active", true)
+            .order("name"),
+
+          supabase
+            .from("products")
+            .select("id, name, sku")
+            .eq("tenant_id", currentTenantId)
+            .eq("is_active", true)
+            .order("name"),
+        ]);
+
+      if (transferResult.error) {
+        throw transferResult.error;
+      }
+
+      if (storeResult.error) {
+        throw storeResult.error;
+      }
+
+      if (productResult.error) {
+        throw productResult.error;
+      }
+
+      const transferData: Transfer[] = (
+        transferResult.data ?? []
+      ).map((transfer: any) => ({
+        id: transfer.id,
+        from_store_id: transfer.from_store_id,
+        to_store_id: transfer.to_store_id,
+        status: transfer.status,
+        notes: transfer.notes ?? null,
+        created_at: transfer.created_at,
+
+        from_store: Array.isArray(transfer.from_store)
+          ? transfer.from_store[0] ?? null
+          : transfer.from_store ?? null,
+
+        to_store: Array.isArray(transfer.to_store)
+          ? transfer.to_store[0] ?? null
+          : transfer.to_store ?? null,
+      }));
+
+      setTransfers(transferData);
+      setStores((storeResult.data ?? []) as Store[]);
+      setProducts((productResult.data ?? []) as Product[]);
+    } catch (error) {
+      console.error("Stock transfers load error:", error);
+
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to load stock transfers."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function createTransfer(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!tenantId) {
+      setMessage("Tenant not found.");
+      return;
+    }
 
     if (!fromStoreId || !toStoreId) {
-      setError("Please select both stores.")
-      return
+      setMessage("Please select both stores.");
+      return;
     }
 
     if (fromStoreId === toStoreId) {
-      setError("From Store and To Store must be different.")
-      return
+      setMessage("From Store and To Store must be different.");
+      return;
     }
 
     if (!productId) {
-      setError("Please select a product.")
-      return
+      setMessage("Please select a product.");
+      return;
     }
 
-    const qty = Number(quantity)
+    const qty = Number(quantity);
 
     if (!qty || qty <= 0) {
-      setError("Quantity must be greater than 0.")
-      return
+      setMessage("Enter a valid quantity.");
+      return;
     }
 
-    const tenantId = await getTenantId()
+    setSaving(true);
+    setMessage("");
 
-    if (!tenantId) {
-      setError("Tenant not found.")
-      return
+    try {
+      const { data: transfer, error: transferError } = await supabase
+        .from("stock_transfers")
+        .insert({
+          tenant_id: tenantId,
+          from_store_id: fromStoreId,
+          to_store_id: toStoreId,
+          status: "requested",
+          notes: notes.trim() || null,
+        })
+        .select("id")
+        .single();
+
+      if (transferError) {
+        throw transferError;
+      }
+
+      const { error: itemError } = await supabase
+        .from("stock_transfer_items")
+        .insert({
+          tenant_id: tenantId,
+          transfer_id: transfer.id,
+          product_id: productId,
+          quantity: qty,
+        });
+
+      if (itemError) {
+        await supabase
+          .from("stock_transfers")
+          .delete()
+          .eq("id", transfer.id)
+          .eq("tenant_id", tenantId);
+
+        throw itemError;
+      }
+
+      setMessage("Stock transfer created successfully.");
+
+      setFromStoreId("");
+      setToStoreId("");
+      setProductId("");
+      setQuantity("");
+      setNotes("");
+
+      await loadData();
+    } catch (error) {
+      console.error("Create transfer error:", error);
+
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to create stock transfer."
+      );
+    } finally {
+      setSaving(false);
     }
-
-    setSaving(true)
-
-    const { data: transfer, error: transferError } = await supabase
-      .from("stock_transfers")
-      .insert({
-        tenant_id: tenantId,
-        from_store_id: fromStoreId,
-        to_store_id: toStoreId,
-        status: "requested",
-        notes: notes.trim() || null,
-      })
-      .select("id")
-      .single()
-
-    if (transferError) {
-      setError(transferError.message)
-      setSaving(false)
-      return
-    }
-
-    const { error: itemError } = await supabase
-      .from("stock_transfer_items")
-      .insert({
-        tenant_id: tenantId,
-        transfer_id: transfer.id,
-        product_id: productId,
-        quantity: qty,
-      })
-
-    if (itemError) {
-      setError(itemError.message)
-      setSaving(false)
-      return
-    }
-
-    setMessage("Stock transfer requested successfully.")
-
-    setProductId("")
-    setQuantity("1")
-    setNotes("")
-
-    await loadData()
-
-    setSaving(false)
   }
 
   async function updateTransferStatus(
     transfer: Transfer,
     newStatus: string
   ) {
-    setMessage("")
-    setError("")
+    if (!tenantId) return;
 
-    const tenantId = await getTenantId()
+    setMessage("");
 
-    if (!tenantId) {
-      setError("Tenant not found.")
-      return
-    }
+    try {
+      const { error } = await supabase
+        .from("stock_transfers")
+        .update({
+          status: newStatus,
+        })
+        .eq("id", transfer.id)
+        .eq("tenant_id", tenantId);
 
-    const validTransitions: Record<string, string[]> = {
-      requested: ["approved"],
-      approved: ["dispatched"],
-      dispatched: ["received"],
-    }
-
-    if (!validTransitions[transfer.status]?.includes(newStatus)) {
-      setError(
-        `Invalid transfer transition: ${transfer.status} → ${newStatus}`
-      )
-      return
-    }
-
-    // When dispatching, create transfer_out ledger movements.
-    if (newStatus === "dispatched") {
-      const { data: items, error: itemsError } = await supabase
-        .from("stock_transfer_items")
-        .select("product_id, quantity")
-        .eq("tenant_id", tenantId)
-        .eq("transfer_id", transfer.id)
-
-      if (itemsError) {
-        setError(itemsError.message)
-        return
+      if (error) {
+        throw error;
       }
 
-      if (!items || items.length === 0) {
-        setError("Transfer has no items.")
-        return
+      /*
+       * Inventory ledger updates are intentionally handled only
+       * when the transfer reaches "received".
+       */
+      if (newStatus === "received") {
+        const { data: items, error: itemsError } = await supabase
+          .from("stock_transfer_items")
+          .select("id, product_id, quantity")
+          .eq("tenant_id", tenantId)
+          .eq("transfer_id", transfer.id);
+
+        if (itemsError) {
+          throw itemsError;
+        }
+
+        const transferItems = (items ?? []) as TransferItem[];
+
+        for (const item of transferItems) {
+          const { error: outError } = await supabase
+            .from("stock_movements")
+            .insert({
+              tenant_id: tenantId,
+              store_id: transfer.from_store_id,
+              product_id: item.product_id,
+              movement_type: "transfer_out",
+              quantity: -Math.abs(Number(item.quantity)),
+              reference_id: transfer.id,
+              notes: "Stock transfer out",
+            });
+
+          if (outError) {
+            throw outError;
+          }
+
+          const { error: inError } = await supabase
+            .from("stock_movements")
+            .insert({
+              tenant_id: tenantId,
+              store_id: transfer.to_store_id,
+              product_id: item.product_id,
+              movement_type: "transfer_in",
+              quantity: Math.abs(Number(item.quantity)),
+              reference_id: transfer.id,
+              notes: "Stock transfer in",
+            });
+
+          if (inError) {
+            throw inError;
+          }
+        }
       }
 
-      const movements = items.map((item) => ({
-        tenant_id: tenantId,
-        store_id: transfer.from_store_id,
-        product_id: item.product_id,
-        movement_type: "transfer_out",
-        quantity: -Math.abs(Number(item.quantity)),
-        reference_id: transfer.id,
-        notes: "Stock transfer dispatched",
-      }))
+      setMessage(`Transfer status updated to ${newStatus}.`);
 
-      const { error: movementError } = await supabase
-        .from("stock_movements")
-        .insert(movements)
+      await loadData();
+    } catch (error) {
+      console.error("Transfer status error:", error);
 
-      if (movementError) {
-        setError(movementError.message)
-        return
-      }
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to update transfer status."
+      );
     }
-
-    // When received, create transfer_in ledger movements.
-    if (newStatus === "received") {
-      const { data: items, error: itemsError } = await supabase
-        .from("stock_transfer_items")
-        .select("product_id, quantity")
-        .eq("tenant_id", tenantId)
-        .eq("transfer_id", transfer.id)
-
-      if (itemsError) {
-        setError(itemsError.message)
-        return
-      }
-
-      if (!items || items.length === 0) {
-        setError("Transfer has no items.")
-        return
-      }
-
-      const movements = items.map((item) => ({
-        tenant_id: tenantId,
-        store_id: transfer.to_store_id,
-        product_id: item.product_id,
-        movement_type: "transfer_in",
-        quantity: Math.abs(Number(item.quantity)),
-        reference_id: transfer.id,
-        notes: "Stock transfer received",
-      }))
-
-      const { error: movementError } = await supabase
-        .from("stock_movements")
-        .insert(movements)
-
-      if (movementError) {
-        setError(movementError.message)
-        return
-      }
-    }
-
-    const { error: updateError } = await supabase
-      .from("stock_transfers")
-      .update({ status: newStatus })
-      .eq("id", transfer.id)
-      .eq("tenant_id", tenantId)
-
-    if (updateError) {
-      setError(updateError.message)
-      return
-    }
-
-    setMessage(`Transfer status updated to ${newStatus}.`)
-
-    await loadData()
   }
 
-  const requested = transfers.filter(
-    (t) => t.status === "requested"
-  ).length
+  const totalTransfers = transfers.length;
 
-  const approved = transfers.filter(
-    (t) => t.status === "approved"
-  ).length
+  const requestedCount = transfers.filter(
+    (item) => item.status === "requested"
+  ).length;
 
-  const received = transfers.filter(
-    (t) => t.status === "received"
-  ).length
+  const approvedCount = transfers.filter(
+    (item) => item.status === "approved"
+  ).length;
+
+  const receivedCount = transfers.filter(
+    (item) => item.status === "received"
+  ).length;
+
+  function getNextStatus(status: string) {
+    switch (status) {
+      case "draft":
+        return "requested";
+      case "requested":
+        return "approved";
+      case "approved":
+        return "dispatched";
+      case "dispatched":
+        return "received";
+      default:
+        return null;
+    }
+  }
+
+  function getStatusLabel(status: string) {
+    return status.replaceAll("_", " ");
+  }
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: "#f8fafc",
-        color: "#0f172a",
-        padding: "32px",
-      }}
-    >
-      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+    <main className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 md:px-8">
+      <div className="mx-auto max-w-7xl">
         {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: "16px",
-            marginBottom: "28px",
-            flexWrap: "wrap",
-          }}
-        >
+        <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <h1
-              style={{
-                margin: 0,
-                fontSize: "32px",
-                fontWeight: 800,
-              }}
-            >
+            <p className="text-sm font-semibold text-indigo-600">
+              RETAILPILOT AI
+            </p>
+
+            <h1 className="mt-1 text-3xl font-bold tracking-tight">
               Stock Transfers
             </h1>
 
-            <p
-              style={{
-                marginTop: "6px",
-                color: "#64748b",
-              }}
-            >
-              Move inventory safely between stores
+            <p className="mt-1 text-sm text-slate-500">
+              Move inventory safely between your stores.
             </p>
           </div>
 
           <button
             onClick={loadData}
-            style={{
-              background: "#0f172a",
-              color: "#ffffff",
-              border: "none",
-              borderRadius: "10px",
-              padding: "11px 18px",
-              fontWeight: 700,
-              cursor: "pointer",
-            }}
+            className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
           >
-            Refresh
+            Refresh Data
           </button>
         </div>
 
-        {/* Messages */}
+        {/* Message */}
         {message && (
-          <div
-            style={{
-              background: "#dcfce7",
-              color: "#166534",
-              border: "1px solid #bbf7d0",
-              padding: "14px 16px",
-              borderRadius: "10px",
-              marginBottom: "20px",
-            }}
-          >
+          <div className="mb-6 rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm font-medium text-indigo-700">
             {message}
           </div>
         )}
 
-        {error && (
-          <div
-            style={{
-              background: "#fee2e2",
-              color: "#991b1b",
-              border: "1px solid #fecaca",
-              padding: "14px 16px",
-              borderRadius: "10px",
-              marginBottom: "20px",
-            }}
-          >
-            {error}
+        {/* KPI Cards */}
+        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-sm text-slate-500">Total Transfers</p>
+            <p className="mt-2 text-2xl font-bold">{totalTransfers}</p>
           </div>
-        )}
 
-        {/* Summary */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns:
-              "repeat(auto-fit, minmax(210px, 1fr))",
-            gap: "16px",
-            marginBottom: "28px",
-          }}
-        >
-          <SummaryCard
-            title="Total Transfers"
-            value={transfers.length.toString()}
-          />
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-sm text-slate-500">Requested</p>
+            <p className="mt-2 text-2xl font-bold text-amber-600">
+              {requestedCount}
+            </p>
+          </div>
 
-          <SummaryCard
-            title="Requested"
-            value={requested.toString()}
-          />
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-sm text-slate-500">Approved</p>
+            <p className="mt-2 text-2xl font-bold text-blue-600">
+              {approvedCount}
+            </p>
+          </div>
 
-          <SummaryCard
-            title="Approved"
-            value={approved.toString()}
-          />
-
-          <SummaryCard
-            title="Received"
-            value={received.toString()}
-          />
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-sm text-slate-500">Received</p>
+            <p className="mt-2 text-2xl font-bold text-emerald-600">
+              {receivedCount}
+            </p>
+          </div>
         </div>
 
         {/* Create Transfer */}
-        <section
-          style={{
-            background: "#ffffff",
-            border: "1px solid #e2e8f0",
-            borderRadius: "14px",
-            padding: "24px",
-            marginBottom: "28px",
-            boxShadow: "0 4px 15px rgba(15, 23, 42, 0.04)",
-          }}
-        >
-          <h2
-            style={{
-              margin: "0 0 20px",
-              fontSize: "20px",
-              fontWeight: 800,
-            }}
-          >
-            Create Stock Transfer
-          </h2>
+        <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+          <div className="mb-5">
+            <h2 className="text-xl font-bold">Create Stock Transfer</h2>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns:
-                "repeat(auto-fit, minmax(200px, 1fr))",
-              gap: "16px",
-            }}
+            <p className="mt-1 text-sm text-slate-500">
+              Create a transfer request between two stores.
+            </p>
+          </div>
+
+          <form
+            onSubmit={createTransfer}
+            className="grid gap-4 md:grid-cols-2 lg:grid-cols-3"
           >
-            <Field label="From Store">
+            {/* From Store */}
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                From Store
+              </label>
+
               <select
                 value={fromStoreId}
                 onChange={(e) => setFromStoreId(e.target.value)}
-                style={inputStyle}
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
               >
                 <option value="">Select source store</option>
 
@@ -505,13 +478,18 @@ export default function StockTransfersPage() {
                   </option>
                 ))}
               </select>
-            </Field>
+            </div>
 
-            <Field label="To Store">
+            {/* To Store */}
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                To Store
+              </label>
+
               <select
                 value={toStoreId}
                 onChange={(e) => setToStoreId(e.target.value)}
-                style={inputStyle}
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
               >
                 <option value="">Select destination store</option>
 
@@ -521,13 +499,18 @@ export default function StockTransfersPage() {
                   </option>
                 ))}
               </select>
-            </Field>
+            </div>
 
-            <Field label="Product">
+            {/* Product */}
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Product
+              </label>
+
               <select
                 value={productId}
                 onChange={(e) => setProductId(e.target.value)}
-                style={inputStyle}
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
               >
                 <option value="">Select product</option>
 
@@ -537,365 +520,160 @@ export default function StockTransfersPage() {
                   </option>
                 ))}
               </select>
-            </Field>
+            </div>
 
-            <Field label="Quantity">
+            {/* Quantity */}
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Quantity
+              </label>
+
               <input
                 type="number"
                 min="1"
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
-                style={inputStyle}
+                placeholder="10"
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
               />
-            </Field>
+            </div>
 
-            <Field label="Notes">
+            {/* Notes */}
+            <div className="md:col-span-2">
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Notes
+              </label>
+
               <input
-                type="text"
-                placeholder="Optional transfer note"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                style={inputStyle}
+                placeholder="Optional transfer notes"
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
               />
-            </Field>
-          </div>
+            </div>
 
-          <button
-            onClick={createTransfer}
-            disabled={saving}
-            style={{
-              marginTop: "20px",
-              background: saving ? "#94a3b8" : "#16a34a",
-              color: "#ffffff",
-              border: "none",
-              borderRadius: "10px",
-              padding: "12px 22px",
-              fontWeight: 800,
-              cursor: saving ? "not-allowed" : "pointer",
-            }}
-          >
-            {saving ? "Creating..." : "Request Transfer"}
-          </button>
+            {/* Submit */}
+            <div className="flex items-end">
+              <button
+                type="submit"
+                disabled={saving}
+                className="w-full rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {saving ? "Creating..." : "Create Transfer"}
+              </button>
+            </div>
+          </form>
         </section>
 
         {/* Transfer History */}
-        <section
-          style={{
-            background: "#ffffff",
-            border: "1px solid #e2e8f0",
-            borderRadius: "14px",
-            overflow: "hidden",
-            boxShadow: "0 4px 15px rgba(15, 23, 42, 0.04)",
-          }}
-        >
-          <div
-            style={{
-              padding: "20px",
-              borderBottom: "1px solid #e2e8f0",
-            }}
-          >
-            <h2
-              style={{
-                margin: 0,
-                fontSize: "20px",
-                fontWeight: 800,
-              }}
-            >
-              Transfer History
-            </h2>
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-200 px-5 py-5 md:px-6">
+            <h2 className="text-xl font-bold">Transfer History</h2>
+
+            <p className="mt-1 text-sm text-slate-500">
+              Track every store-to-store inventory movement.
+            </p>
           </div>
 
           {loading ? (
-            <div
-              style={{
-                padding: "40px",
-                textAlign: "center",
-                color: "#64748b",
-              }}
-            >
+            <div className="p-8 text-center text-sm text-slate-500">
               Loading transfers...
             </div>
           ) : transfers.length === 0 ? (
-            <div
-              style={{
-                padding: "50px",
-                textAlign: "center",
-                color: "#64748b",
-              }}
-            >
-              No stock transfers found.
+            <div className="p-10 text-center">
+              <p className="font-semibold text-slate-700">
+                No stock transfers found
+              </p>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Create your first transfer using the form above.
+              </p>
             </div>
           ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table
-                style={{
-                  width: "100%",
-                  minWidth: "850px",
-                  borderCollapse: "collapse",
-                }}
-              >
-                <thead>
-                  <tr style={{ background: "#f8fafc" }}>
-                    <th style={thStyle}>From</th>
-                    <th style={thStyle}>To</th>
-                    <th style={thStyle}>Status</th>
-                    <th style={thStyle}>Notes</th>
-                    <th style={thStyle}>Date</th>
-                    <th style={thStyle}>Action</th>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[950px] text-left text-sm">
+                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-5 py-4">Date</th>
+                    <th className="px-5 py-4">From</th>
+                    <th className="px-5 py-4">To</th>
+                    <th className="px-5 py-4">Status</th>
+                    <th className="px-5 py-4">Notes</th>
+                    <th className="px-5 py-4">Action</th>
                   </tr>
                 </thead>
 
-                <tbody>
-                  {transfers.map((transfer) => (
-                    <tr key={transfer.id}>
-                      <td style={tdStyle}>
-                        {transfer.from_store?.name || "N/A"}
-                      </td>
+                <tbody className="divide-y divide-slate-100">
+                  {transfers.map((transfer) => {
+                    const nextStatus = getNextStatus(transfer.status);
 
-                      <td style={tdStyle}>
-                        {transfer.to_store?.name || "N/A"}
-                      </td>
+                    return (
+                      <tr
+                        key={transfer.id}
+                        className="transition hover:bg-slate-50"
+                      >
+                        <td className="px-5 py-4 text-slate-600">
+                          {new Date(
+                            transfer.created_at
+                          ).toLocaleDateString("en-IN")}
+                        </td>
 
-                      <td style={tdStyle}>
-                        <StatusBadge status={transfer.status} />
-                      </td>
+                        <td className="px-5 py-4 font-medium text-slate-900">
+                          {transfer.from_store?.name ?? "—"}
+                        </td>
 
-                      <td style={tdStyle}>
-                        {transfer.notes || "-"}
-                      </td>
+                        <td className="px-5 py-4 font-medium text-slate-900">
+                          {transfer.to_store?.name ?? "—"}
+                        </td>
 
-                      <td style={tdStyle}>
-                        {new Date(
-                          transfer.created_at
-                        ).toLocaleString()}
-                      </td>
-
-                      <td style={tdStyle}>
-                        {transfer.status === "requested" && (
-                          <ActionButton
-                            label="Approve"
-                            onClick={() =>
-                              updateTransferStatus(
-                                transfer,
-                                "approved"
-                              )
-                            }
-                          />
-                        )}
-
-                        {transfer.status === "approved" && (
-                          <ActionButton
-                            label="Dispatch"
-                            onClick={() =>
-                              updateTransferStatus(
-                                transfer,
-                                "dispatched"
-                              )
-                            }
-                          />
-                        )}
-
-                        {transfer.status === "dispatched" && (
-                          <ActionButton
-                            label="Receive"
-                            onClick={() =>
-                              updateTransferStatus(
-                                transfer,
-                                "received"
-                              )
-                            }
-                          />
-                        )}
-
-                        {transfer.status === "received" && (
+                        <td className="px-5 py-4">
                           <span
-                            style={{
-                              color: "#16a34a",
-                              fontWeight: 700,
-                              fontSize: "13px",
-                            }}
+                            className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold capitalize ${
+                              transfer.status === "received"
+                                ? "bg-emerald-100 text-emerald-700"
+                                : transfer.status === "approved"
+                                ? "bg-blue-100 text-blue-700"
+                                : transfer.status === "dispatched"
+                                ? "bg-purple-100 text-purple-700"
+                                : "bg-amber-100 text-amber-700"
+                            }`}
                           >
-                            Completed
+                            {getStatusLabel(transfer.status)}
                           </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+
+                        <td className="max-w-[220px] truncate px-5 py-4 text-slate-600">
+                          {transfer.notes ?? "—"}
+                        </td>
+
+                        <td className="px-5 py-4">
+                          {nextStatus ? (
+                            <button
+                              onClick={() =>
+                                updateTransferStatus(
+                                  transfer,
+                                  nextStatus
+                                )
+                              }
+                              className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white transition hover:bg-slate-800"
+                            >
+                              Mark {getStatusLabel(nextStatus)}
+                            </button>
+                          ) : (
+                            <span className="text-xs font-semibold text-emerald-600">
+                              Completed
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           )}
         </section>
       </div>
-
-      <style jsx>{`
-        @media (max-width: 640px) {
-          main {
-            padding: 20px !important;
-          }
-
-          h1 {
-            font-size: 26px !important;
-          }
-        }
-      `}</style>
     </main>
-  )
-}
-
-function SummaryCard({
-  title,
-  value,
-}: {
-  title: string
-  value: string
-}) {
-  return (
-    <div
-      style={{
-        background: "#ffffff",
-        border: "1px solid #e2e8f0",
-        borderRadius: "14px",
-        padding: "20px",
-        boxShadow: "0 4px 15px rgba(15, 23, 42, 0.04)",
-      }}
-    >
-      <div
-        style={{
-          color: "#64748b",
-          fontSize: "14px",
-          fontWeight: 600,
-          marginBottom: "8px",
-        }}
-      >
-        {title}
-      </div>
-
-      <div
-        style={{
-          color: "#0f172a",
-          fontSize: "25px",
-          fontWeight: 800,
-        }}
-      >
-        {value}
-      </div>
-    </div>
-  )
-}
-
-function Field({
-  label,
-  children,
-}: {
-  label: string
-  children: React.ReactNode
-}) {
-  return (
-    <div>
-      <label
-        style={{
-          display: "block",
-          marginBottom: "7px",
-          fontSize: "14px",
-          fontWeight: 700,
-          color: "#334155",
-        }}
-      >
-        {label}
-      </label>
-
-      {children}
-    </div>
-  )
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const background =
-    status === "received"
-      ? "#dcfce7"
-      : status === "dispatched"
-        ? "#dbeafe"
-        : status === "approved"
-          ? "#fef3c7"
-          : "#f1f5f9"
-
-  const color =
-    status === "received"
-      ? "#166534"
-      : status === "dispatched"
-        ? "#1d4ed8"
-        : status === "approved"
-          ? "#92400e"
-          : "#475569"
-
-  return (
-    <span
-      style={{
-        display: "inline-block",
-        padding: "5px 10px",
-        borderRadius: "999px",
-        background,
-        color,
-        fontSize: "13px",
-        fontWeight: 700,
-        textTransform: "capitalize",
-      }}
-    >
-      {status}
-    </span>
-  )
-}
-
-function ActionButton({
-  label,
-  onClick,
-}: {
-  label: string
-  onClick: () => void
-}) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        border: "none",
-        borderRadius: "8px",
-        padding: "8px 12px",
-        background: "#0f172a",
-        color: "#ffffff",
-        fontSize: "13px",
-        fontWeight: 700,
-        cursor: "pointer",
-      }}
-    >
-      {label}
-    </button>
-  )
-}
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  boxSizing: "border-box",
-  padding: "11px 12px",
-  border: "1px solid #cbd5e1",
-  borderRadius: "9px",
-  background: "#ffffff",
-  color: "#0f172a",
-  fontSize: "14px",
-}
-
-const thStyle: React.CSSProperties = {
-  textAlign: "left",
-  padding: "14px 16px",
-  fontSize: "13px",
-  color: "#475569",
-  fontWeight: 700,
-  borderBottom: "1px solid #e2e8f0",
-}
-
-const tdStyle: React.CSSProperties = {
-  padding: "15px 16px",
-  fontSize: "14px",
-  color: "#334155",
-  borderBottom: "1px solid #f1f5f9",
+  );
 }

@@ -25,6 +25,37 @@ type Movement = {
   stores: { name: string } | null
 }
 
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '12px 14px',
+  border: '1px solid #cbd5e1',
+  borderRadius: '10px',
+  outline: 'none',
+  fontSize: '14px',
+  boxSizing: 'border-box',
+  background: '#ffffff',
+  color: '#0f172a',
+}
+
+const thStyle: React.CSSProperties = {
+  textAlign: 'left',
+  padding: '14px',
+  borderBottom: '1px solid #e2e8f0',
+  color: '#334155',
+  background: '#f8fafc',
+  fontSize: '13px',
+  fontWeight: 700,
+  whiteSpace: 'nowrap',
+}
+
+const tdStyle: React.CSSProperties = {
+  padding: '14px',
+  borderBottom: '1px solid #f1f5f9',
+  color: '#334155',
+  background: '#ffffff',
+  fontSize: '14px',
+}
+
 export default function InventoryPage() {
   const supabase = createClient()
 
@@ -60,13 +91,13 @@ export default function InventoryPage() {
       return
     }
 
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('user_profiles')
       .select('tenant_id')
       .eq('id', user.id)
       .single()
 
-    if (!profile) {
+    if (profileError || !profile) {
       setMessage('Business profile not found.')
       setLoading(false)
       return
@@ -99,32 +130,78 @@ export default function InventoryPage() {
           .order('created_at', { ascending: false }),
       ])
 
-    setProducts(productsResult.data ?? [])
-    setStores(storesResult.data ?? [])
-    setMovements(movementsResult.data ?? [])
+    if (productsResult.error) {
+      setMessage(productsResult.error.message)
+      setLoading(false)
+      return
+    }
 
-    calculateStock(movementsResult.data ?? [])
+    if (storesResult.error) {
+      setMessage(storesResult.error.message)
+      setLoading(false)
+      return
+    }
+
+    if (movementsResult.error) {
+      setMessage(movementsResult.error.message)
+      setLoading(false)
+      return
+    }
+
+    const productData = (productsResult.data ?? []) as Product[]
+    const storeData = (storesResult.data ?? []) as Store[]
+
+    const movementData: Movement[] = (movementsResult.data ?? []).map(
+      (movement) => {
+        const productRelation = Array.isArray(movement.products)
+          ? movement.products[0] ?? null
+          : movement.products ?? null
+
+        const storeRelation = Array.isArray(movement.stores)
+          ? movement.stores[0] ?? null
+          : movement.stores ?? null
+
+        return {
+          id: movement.id,
+          movement_type: movement.movement_type,
+          quantity: Number(movement.quantity ?? 0),
+          notes: movement.notes ?? null,
+          created_at: movement.created_at,
+          products: productRelation,
+          stores: storeRelation,
+        }
+      }
+    )
+
+    setProducts(productData)
+    setStores(storeData)
+    setMovements(movementData)
+
+    calculateStock(movementData, productData)
 
     setLoading(false)
   }
 
-  function calculateStock(data: Movement[]) {
+  function calculateStock(
+    data: Movement[],
+    productList: Product[]
+  ) {
     const result: Record<string, number> = {}
 
     for (const movement of data) {
-      const productId = movement.products
-        ? products.find(
-            (p) => p.name === movement.products?.name
-          )?.id
-        : null
+      if (!movement.products) continue
 
-      if (!productId) continue
+      const matchedProduct = productList.find(
+        (product) => product.sku === movement.products?.sku
+      )
 
-      if (!result[productId]) {
-        result[productId] = 0
+      if (!matchedProduct) continue
+
+      if (result[matchedProduct.id] === undefined) {
+        result[matchedProduct.id] = 0
       }
 
-      result[productId] += movement.quantity
+      result[matchedProduct.id] += Number(movement.quantity || 0)
     }
 
     setStock(result)
@@ -138,15 +215,15 @@ export default function InventoryPage() {
       return
     }
 
-    if (quantity === 0) {
-      setMessage('Quantity cannot be zero.')
+    if (quantity <= 0) {
+      setMessage('Quantity must be greater than zero.')
       return
     }
 
     setSaving(true)
     setMessage('Saving stock movement...')
 
-    let finalQuantity = quantity
+    let finalQuantity = Math.abs(quantity)
 
     if (
       movementType === 'sale' ||
@@ -155,8 +232,6 @@ export default function InventoryPage() {
       movementType === 'transfer_out'
     ) {
       finalQuantity = -Math.abs(quantity)
-    } else {
-      finalQuantity = Math.abs(quantity)
     }
 
     const { error } = await supabase
@@ -182,7 +257,7 @@ export default function InventoryPage() {
     setQuantity(1)
     setNotes('')
 
-    setMessage('Stock movement added successfully! 🎉')
+    setMessage('Stock movement added successfully!')
 
     await loadInventory()
 
@@ -193,51 +268,85 @@ export default function InventoryPage() {
     <main
       style={{
         minHeight: '100vh',
-        background: '#f8fafc',
-        padding: '32px',
+        background: '#f1f5f9',
+        padding: '32px 20px',
+        color: '#0f172a',
       }}
     >
-      <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+      <div
+        style={{
+          maxWidth: '1200px',
+          margin: '0 auto',
+        }}
+      >
         <div style={{ marginBottom: '28px' }}>
+          <div
+            style={{
+              display: 'inline-block',
+              padding: '6px 12px',
+              borderRadius: '999px',
+              background: '#dcfce7',
+              color: '#166534',
+              fontSize: '12px',
+              fontWeight: 700,
+              marginBottom: '10px',
+            }}
+          >
+            INVENTORY MANAGEMENT
+          </div>
+
           <h1
             style={{
+              margin: 0,
               fontSize: '32px',
-              fontWeight: 700,
+              fontWeight: 800,
               color: '#0f172a',
-              marginBottom: '8px',
             }}
           >
             Inventory
           </h1>
 
-          <p style={{ color: '#64748b' }}>
+          <p
+            style={{
+              marginTop: '8px',
+              color: '#475569',
+              fontSize: '15px',
+            }}
+          >
             Track stock using an immutable movement ledger.
           </p>
         </div>
 
-        {/* Stock Movement */}
         <section
           style={{
-            background: 'white',
+            background: '#ffffff',
             padding: '24px',
             borderRadius: '16px',
             border: '1px solid #e2e8f0',
             marginBottom: '24px',
+            boxShadow: '0 4px 16px rgba(15,23,42,0.05)',
           }}
         >
           <h2
             style={{
+              margin: '0 0 20px',
               fontSize: '20px',
-              fontWeight: 600,
+              fontWeight: 700,
               color: '#0f172a',
-              marginBottom: '20px',
             }}
           >
             Add Stock Movement
           </h2>
 
           {loading ? (
-            <p>Loading inventory...</p>
+            <div
+              style={{
+                padding: '20px',
+                color: '#475569',
+              }}
+            >
+              Loading inventory...
+            </div>
           ) : (
             <form onSubmit={addMovement}>
               <div
@@ -322,11 +431,11 @@ export default function InventoryPage() {
                 style={{
                   marginTop: '20px',
                   background: saving ? '#94a3b8' : '#2563eb',
-                  color: 'white',
+                  color: '#ffffff',
                   border: 'none',
                   padding: '12px 22px',
                   borderRadius: '10px',
-                  fontWeight: 600,
+                  fontWeight: 700,
                   cursor: saving ? 'not-allowed' : 'pointer',
                 }}
               >
@@ -336,37 +445,55 @@ export default function InventoryPage() {
           )}
 
           {message && (
-            <p style={{ marginTop: '16px', color: '#475569' }}>
+            <div
+              style={{
+                marginTop: '16px',
+                padding: '12px 14px',
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: '10px',
+                color: '#334155',
+                fontSize: '14px',
+              }}
+            >
               {message}
-            </p>
+            </div>
           )}
         </section>
 
-        {/* Stock Summary */}
         <section
           style={{
-            background: 'white',
+            background: '#ffffff',
             padding: '24px',
             borderRadius: '16px',
             border: '1px solid #e2e8f0',
             marginBottom: '24px',
+            boxShadow: '0 4px 16px rgba(15,23,42,0.05)',
           }}
         >
           <h2
             style={{
+              margin: '0 0 20px',
               fontSize: '20px',
-              fontWeight: 600,
+              fontWeight: 700,
               color: '#0f172a',
-              marginBottom: '20px',
             }}
           >
             Stock Summary
           </h2>
 
           {products.length === 0 ? (
-            <p style={{ color: '#64748b' }}>
+            <div
+              style={{
+                padding: '30px',
+                textAlign: 'center',
+                background: '#f8fafc',
+                borderRadius: '12px',
+                color: '#475569',
+              }}
+            >
               No products available.
-            </p>
+            </div>
           ) : (
             <div style={{ overflowX: 'auto' }}>
               <table
@@ -389,18 +516,28 @@ export default function InventoryPage() {
                 <tbody>
                   {products.map((product) => {
                     const currentStock = stock[product.id] ?? 0
+
                     const lowStock =
+                      product.reorder_level > 0 &&
                       currentStock <= product.reorder_level
 
                     return (
                       <tr key={product.id}>
                         <td style={tdStyle}>
-                          <strong>{product.name}</strong>
+                          <strong style={{ color: '#0f172a' }}>
+                            {product.name}
+                          </strong>
                         </td>
 
                         <td style={tdStyle}>{product.sku}</td>
 
-                        <td style={tdStyle}>
+                        <td
+                          style={{
+                            ...tdStyle,
+                            fontWeight: 700,
+                            color: '#0f172a',
+                          }}
+                        >
                           {currentStock}
                         </td>
 
@@ -409,7 +546,23 @@ export default function InventoryPage() {
                         </td>
 
                         <td style={tdStyle}>
-                          {lowStock ? '⚠️ Low Stock' : '✅ Healthy'}
+                          <span
+                            style={{
+                              display: 'inline-block',
+                              padding: '5px 10px',
+                              borderRadius: '999px',
+                              background: lowStock
+                                ? '#fee2e2'
+                                : '#dcfce7',
+                              color: lowStock
+                                ? '#991b1b'
+                                : '#166534',
+                              fontWeight: 700,
+                              fontSize: '12px',
+                            }}
+                          >
+                            {lowStock ? 'Low Stock' : 'Healthy'}
+                          </span>
                         </td>
                       </tr>
                     )
@@ -420,13 +573,13 @@ export default function InventoryPage() {
           )}
         </section>
 
-        {/* Movement Ledger */}
         <section
           style={{
-            background: 'white',
+            background: '#ffffff',
             padding: '24px',
             borderRadius: '16px',
             border: '1px solid #e2e8f0',
+            boxShadow: '0 4px 16px rgba(15,23,42,0.05)',
           }}
         >
           <div
@@ -435,26 +588,44 @@ export default function InventoryPage() {
               justifyContent: 'space-between',
               alignItems: 'center',
               marginBottom: '20px',
+              gap: '12px',
+              flexWrap: 'wrap',
             }}
           >
-            <h2
-              style={{
-                fontSize: '20px',
-                fontWeight: 600,
-                color: '#0f172a',
-              }}
-            >
-              Stock Movement Ledger
-            </h2>
+            <div>
+              <h2
+                style={{
+                  margin: 0,
+                  fontSize: '20px',
+                  fontWeight: 700,
+                  color: '#0f172a',
+                }}
+              >
+                Stock Movement Ledger
+              </h2>
+
+              <p
+                style={{
+                  margin: '5px 0 0',
+                  color: '#64748b',
+                  fontSize: '13px',
+                }}
+              >
+                Complete stock movement history
+              </p>
+            </div>
 
             <button
+              type="button"
               onClick={loadInventory}
               style={{
                 padding: '9px 16px',
-                borderRadius: '8px',
+                borderRadius: '9px',
                 border: '1px solid #cbd5e1',
-                background: 'white',
+                background: '#ffffff',
+                color: '#0f172a',
                 cursor: 'pointer',
+                fontWeight: 600,
               }}
             >
               Refresh
@@ -462,9 +633,17 @@ export default function InventoryPage() {
           </div>
 
           {movements.length === 0 ? (
-            <p style={{ color: '#64748b' }}>
+            <div
+              style={{
+                padding: '30px',
+                textAlign: 'center',
+                background: '#f8fafc',
+                borderRadius: '12px',
+                color: '#475569',
+              }}
+            >
               No stock movements yet.
-            </p>
+            </div>
           ) : (
             <div style={{ overflowX: 'auto' }}>
               <table
@@ -489,7 +668,9 @@ export default function InventoryPage() {
                   {movements.map((movement) => (
                     <tr key={movement.id}>
                       <td style={tdStyle}>
-                        {movement.products?.name || '-'}
+                        <strong style={{ color: '#0f172a' }}>
+                          {movement.products?.name || '-'}
+                        </strong>
                       </td>
 
                       <td style={tdStyle}>
@@ -500,7 +681,16 @@ export default function InventoryPage() {
                         {movement.movement_type}
                       </td>
 
-                      <td style={tdStyle}>
+                      <td
+                        style={{
+                          ...tdStyle,
+                          fontWeight: 700,
+                          color:
+                            movement.quantity > 0
+                              ? '#166534'
+                              : '#dc2626',
+                        }}
+                      >
                         {movement.quantity > 0
                           ? `+${movement.quantity}`
                           : movement.quantity}
@@ -525,30 +715,4 @@ export default function InventoryPage() {
       </div>
     </main>
   )
-}
-
-const inputStyle = {
-  width: '100%',
-  padding: '12px 14px',
-  border: '1px solid #cbd5e1',
-  borderRadius: '10px',
-  outline: 'none',
-  fontSize: '14px',
-  boxSizing: 'border-box' as const,
-  background: 'white',
-}
-
-const thStyle = {
-  textAlign: 'left' as const,
-  padding: '14px',
-  borderBottom: '1px solid #e2e8f0',
-  color: '#475569',
-  fontSize: '13px',
-}
-
-const tdStyle = {
-  padding: '14px',
-  borderBottom: '1px solid #f1f5f9',
-  color: '#334155',
-  fontSize: '14px',
 }

@@ -1,410 +1,429 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import { createClient } from "@/lib/supabase/client"
+import { FormEvent, useEffect, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 
-type ReturnRecord = {
-  id: string
-  return_type: string
-  reason: string | null
-  total_amount: number
-  status: string
-  created_at: string
-  sales: {
-    invoice_number: string
-  } | null
-  customers: {
-    name: string
-  } | null
-}
+type Sale = {
+  id: string;
+  invoice_number: string;
+};
+
+type Customer = {
+  id: string;
+  name: string;
+};
+
+type Store = {
+  id: string;
+  name: string;
+};
 
 type Product = {
-  id: string
-  name: string
-  sku: string
-  selling_price: number
-}
+  id: string;
+  name: string;
+  sku: string;
+  selling_price: number;
+};
+
+type ReturnRecord = {
+  id: string;
+  return_type: string;
+  reason: string | null;
+  total_amount: number;
+  status: string;
+  created_at: string;
+  sales: Sale | null;
+  customers: Customer | null;
+};
 
 export default function ReturnsPage() {
-  const supabase = createClient()
+  const supabase = createClient();
 
-  const [returns, setReturns] = useState<ReturnRecord[]>([])
-  const [products, setProducts] = useState<Product[]>([])
-  const [stores, setStores] = useState<{ id: string; name: string }[]>([])
+  const [returns, setReturns] = useState<ReturnRecord[]>([]);
+  const [sales, setSales] = useState<Sale[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [stores, setStores] = useState<Store[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
 
-  const [storeId, setStoreId] = useState("")
-  const [productId, setProductId] = useState("")
-  const [quantity, setQuantity] = useState("1")
-  const [reason, setReason] = useState("")
-  const [returnType, setReturnType] = useState("customer_return")
+  const [tenantId, setTenantId] = useState<string | null>(null);
 
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [message, setMessage] = useState("")
-  const [error, setError] = useState("")
+  const [storeId, setStoreId] = useState("");
+  const [saleId, setSaleId] = useState("");
+  const [customerId, setCustomerId] = useState("");
+  const [productId, setProductId] = useState("");
+  const [quantity, setQuantity] = useState("");
+  const [unitPrice, setUnitPrice] = useState("");
+  const [returnType, setReturnType] = useState("customer_return");
+  const [reason, setReason] = useState("");
 
-  async function getTenantId() {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
 
-    if (!user) return null
-
-    const { data: profile } = await supabase
-      .from("user_profiles")
-      .select("tenant_id")
-      .eq("id", user.id)
-      .single()
-
-    return profile?.tenant_id || null
-  }
+  useEffect(() => {
+    loadData();
+  }, []);
 
   async function loadData() {
-    setLoading(true)
-    setError("")
+    setLoading(true);
+    setMessage("");
 
-    const tenantId = await getTenantId()
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-    if (!tenantId) {
-      setError("User profile or tenant not found.")
-      setLoading(false)
-      return
-    }
+      if (!user) {
+        setMessage("Please login first.");
+        setLoading(false);
+        return;
+      }
 
-    const [returnsResult, productsResult, storesResult] =
-      await Promise.all([
+      const { data: profile, error: profileError } = await supabase
+        .from("user_profiles")
+        .select("tenant_id")
+        .eq("id", user.id)
+        .single();
+
+      if (profileError || !profile?.tenant_id) {
+        setMessage("Tenant profile not found.");
+        setLoading(false);
+        return;
+      }
+
+      const currentTenantId = profile.tenant_id;
+      setTenantId(currentTenantId);
+
+      const [
+        returnsResult,
+        salesResult,
+        customersResult,
+        storesResult,
+        productsResult,
+      ] = await Promise.all([
         supabase
           .from("returns")
-          .select(`
-            id,
-            return_type,
-            reason,
-            total_amount,
-            status,
-            created_at,
-            sales (
-              invoice_number
-            ),
-            customers (
-              name
-            )
-          `)
-          .eq("tenant_id", tenantId)
+          .select(
+            `
+              id,
+              return_type,
+              reason,
+              total_amount,
+              status,
+              created_at,
+              sales (
+                id,
+                invoice_number
+              ),
+              customers (
+                id,
+                name
+              )
+            `
+          )
+          .eq("tenant_id", currentTenantId)
           .order("created_at", { ascending: false }),
 
         supabase
-          .from("products")
-          .select("id, name, sku, selling_price")
-          .eq("tenant_id", tenantId)
-          .eq("is_active", true)
+          .from("sales")
+          .select("id, invoice_number")
+          .eq("tenant_id", currentTenantId)
+          .eq("status", "completed")
+          .order("sale_date", { ascending: false }),
+
+        supabase
+          .from("customers")
+          .select("id, name")
+          .eq("tenant_id", currentTenantId)
           .order("name"),
 
         supabase
           .from("stores")
           .select("id, name")
-          .eq("tenant_id", tenantId)
+          .eq("tenant_id", currentTenantId)
           .eq("is_active", true)
           .order("name"),
-      ])
 
-    if (returnsResult.error) {
-      setError(returnsResult.error.message)
-    } else {
-      setReturns((returnsResult.data as ReturnRecord[]) || [])
+        supabase
+          .from("products")
+          .select("id, name, sku, selling_price")
+          .eq("tenant_id", currentTenantId)
+          .eq("is_active", true)
+          .order("name"),
+      ]);
+
+      if (returnsResult.error) throw returnsResult.error;
+      if (salesResult.error) throw salesResult.error;
+      if (customersResult.error) throw customersResult.error;
+      if (storesResult.error) throw storesResult.error;
+      if (productsResult.error) throw productsResult.error;
+
+      const returnData: ReturnRecord[] = (
+        returnsResult.data ?? []
+      ).map((record: any) => ({
+        id: record.id,
+        return_type: record.return_type,
+        reason: record.reason ?? null,
+        total_amount: Number(record.total_amount ?? 0),
+        status: record.status,
+        created_at: record.created_at,
+
+        sales: Array.isArray(record.sales)
+          ? record.sales[0] ?? null
+          : record.sales ?? null,
+
+        customers: Array.isArray(record.customers)
+          ? record.customers[0] ?? null
+          : record.customers ?? null,
+      }));
+
+      setReturns(returnData);
+      setSales((salesResult.data ?? []) as Sale[]);
+      setCustomers((customersResult.data ?? []) as Customer[]);
+      setStores((storesResult.data ?? []) as Store[]);
+
+      setProducts(
+        (productsResult.data ?? []).map((product: any) => ({
+          id: product.id,
+          name: product.name,
+          sku: product.sku,
+          selling_price: Number(product.selling_price ?? 0),
+        }))
+      );
+    } catch (error) {
+      console.error("Returns load error:", error);
+
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to load returns."
+      );
+    } finally {
+      setLoading(false);
     }
-
-    if (productsResult.error) {
-      setError(productsResult.error.message)
-    } else {
-      setProducts(productsResult.data || [])
-    }
-
-    if (storesResult.error) {
-      setError(storesResult.error.message)
-    } else {
-      setStores(storesResult.data || [])
-
-      if (!storeId && storesResult.data?.length) {
-        setStoreId(storesResult.data[0].id)
-      }
-    }
-
-    setLoading(false)
   }
 
-  useEffect(() => {
-    loadData()
-  }, [])
+  function handleProductChange(value: string) {
+    setProductId(value);
 
-  async function createReturn() {
-    setMessage("")
-    setError("")
+    const product = products.find((item) => item.id === value);
 
-    if (!storeId) {
-      setError("Please select a store.")
-      return
+    if (product) {
+      setUnitPrice(String(product.selling_price ?? ""));
     }
+  }
 
-    if (!productId) {
-      setError("Please select a product.")
-      return
-    }
-
-    const qty = Number(quantity)
-
-    if (!qty || qty <= 0) {
-      setError("Quantity must be greater than 0.")
-      return
-    }
-
-    const product = products.find((p) => p.id === productId)
-
-    if (!product) {
-      setError("Product not found.")
-      return
-    }
-
-    setSaving(true)
-
-    const tenantId = await getTenantId()
+  async function addReturn(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
 
     if (!tenantId) {
-      setError("Tenant not found.")
-      setSaving(false)
-      return
+      setMessage("Tenant not found.");
+      return;
     }
 
-    const totalAmount = qty * Number(product.selling_price)
-
-    // Create return record
-    const { data: returnData, error: returnError } = await supabase
-      .from("returns")
-      .insert({
-        tenant_id: tenantId,
-        store_id: storeId,
-        return_type: returnType,
-        reason: reason || "Customer return",
-        total_amount: totalAmount,
-        status: "completed",
-      })
-      .select("id")
-      .single()
-
-    if (returnError) {
-      setError(returnError.message)
-      setSaving(false)
-      return
+    if (!storeId || !productId) {
+      setMessage("Please select store and product.");
+      return;
     }
 
-    // Create return item
-    const { error: itemError } = await supabase
-      .from("return_items")
-      .insert({
-        tenant_id: tenantId,
-        return_id: returnData.id,
-        product_id: productId,
-        quantity: qty,
-        unit_price: product.selling_price,
-      })
+    const qty = Number(quantity);
+    const price = Number(unitPrice);
 
-    if (itemError) {
-      setError(itemError.message)
-      setSaving(false)
-      return
+    if (!qty || qty <= 0) {
+      setMessage("Enter a valid quantity.");
+      return;
     }
 
-    // Add stock back through immutable stock ledger
-    const { error: stockError } = await supabase
-      .from("stock_movements")
-      .insert({
-        tenant_id: tenantId,
-        store_id: storeId,
-        product_id: productId,
-        movement_type: "customer_return",
-        quantity: qty,
-        reference_id: returnData.id,
-        notes: reason || "Customer return",
-      })
-
-    if (stockError) {
-      setError(stockError.message)
-      setSaving(false)
-      return
+    if (!price || price <= 0) {
+      setMessage("Enter a valid unit price.");
+      return;
     }
 
-    setMessage(
-      `Return created successfully. ${product.name} × ${qty} added back to stock.`
-    )
+    setSaving(true);
+    setMessage("");
 
-    setProductId("")
-    setQuantity("1")
-    setReason("")
+    try {
+      const totalAmount = qty * price;
 
-    await loadData()
+      const { data: returnRecord, error: returnError } =
+        await supabase
+          .from("returns")
+          .insert({
+            tenant_id: tenantId,
+            store_id: storeId,
+            sale_id: saleId || null,
+            customer_id: customerId || null,
+            return_type: returnType,
+            reason: reason.trim() || null,
+            total_amount: totalAmount,
+            status: "completed",
+          })
+          .select("id")
+          .single();
 
-    setSaving(false)
+      if (returnError) {
+        throw returnError;
+      }
+
+      const { error: itemError } = await supabase
+        .from("return_items")
+        .insert({
+          tenant_id: tenantId,
+          return_id: returnRecord.id,
+          product_id: productId,
+          quantity: qty,
+          unit_price: price,
+        });
+
+      if (itemError) {
+        throw itemError;
+      }
+
+      const { error: movementError } = await supabase
+        .from("stock_movements")
+        .insert({
+          tenant_id: tenantId,
+          store_id: storeId,
+          product_id: productId,
+          movement_type: "customer_return",
+          quantity: qty,
+          reference_id: returnRecord.id,
+          notes: reason.trim() || "Customer return",
+        });
+
+      if (movementError) {
+        throw movementError;
+      }
+
+      setMessage("Return added successfully.");
+
+      setStoreId("");
+      setSaleId("");
+      setCustomerId("");
+      setProductId("");
+      setQuantity("");
+      setUnitPrice("");
+      setReturnType("customer_return");
+      setReason("");
+
+      await loadData();
+    } catch (error) {
+      console.error("Add return error:", error);
+
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to add return."
+      );
+    } finally {
+      setSaving(false);
+    }
   }
 
   const totalReturns = returns.reduce(
-    (sum, item) => sum + Number(item.total_amount),
+    (sum, item) => sum + Number(item.total_amount || 0),
     0
-  )
+  );
 
   const completedReturns = returns.filter(
-    (item) => item.status === "completed"
-  ).length
+    (item) => item.status.toLowerCase() === "completed"
+  );
+
+  const pendingReturns = returns.filter(
+    (item) => item.status.toLowerCase() === "pending"
+  );
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: "#f8fafc",
-        color: "#0f172a",
-        padding: "32px",
-      }}
-    >
-      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+    <main className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 md:px-8">
+      <div className="mx-auto max-w-7xl">
         {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: "16px",
-            marginBottom: "28px",
-            flexWrap: "wrap",
-          }}
-        >
+        <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <h1
-              style={{
-                margin: 0,
-                fontSize: "32px",
-                fontWeight: 800,
-                color: "#0f172a",
-              }}
-            >
+            <p className="text-sm font-semibold text-indigo-600">
+              RETAILPILOT AI
+            </p>
+
+            <h1 className="mt-1 text-3xl font-bold tracking-tight">
               Returns
             </h1>
 
-            <p
-              style={{
-                marginTop: "6px",
-                color: "#64748b",
-              }}
-            >
-              Manage customer returns and stock recovery
+            <p className="mt-1 text-sm text-slate-500">
+              Manage customer returns and returned inventory.
             </p>
           </div>
 
           <button
             onClick={loadData}
-            style={{
-              border: "none",
-              borderRadius: "10px",
-              padding: "11px 18px",
-              background: "#0f172a",
-              color: "#ffffff",
-              fontWeight: 700,
-              cursor: "pointer",
-            }}
+            className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
           >
-            Refresh
+            Refresh Data
           </button>
         </div>
 
-        {/* Messages */}
+        {/* Message */}
         {message && (
-          <div
-            style={{
-              marginBottom: "20px",
-              padding: "14px 16px",
-              borderRadius: "10px",
-              background: "#dcfce7",
-              color: "#166534",
-              border: "1px solid #bbf7d0",
-            }}
-          >
+          <div className="mb-6 rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm font-medium text-indigo-700">
             {message}
           </div>
         )}
 
-        {error && (
-          <div
-            style={{
-              marginBottom: "20px",
-              padding: "14px 16px",
-              borderRadius: "10px",
-              background: "#fee2e2",
-              color: "#991b1b",
-              border: "1px solid #fecaca",
-            }}
-          >
-            {error}
+        {/* KPI */}
+        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-sm text-slate-500">Return Value</p>
+            <p className="mt-2 text-2xl font-bold">
+              ₹{totalReturns.toLocaleString("en-IN")}
+            </p>
           </div>
-        )}
 
-        {/* Summary */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            gap: "16px",
-            marginBottom: "28px",
-          }}
-        >
-          <SummaryCard
-            title="Total Returns"
-            value={`₹${totalReturns.toFixed(2)}`}
-          />
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-sm text-slate-500">Total Returns</p>
+            <p className="mt-2 text-2xl font-bold">
+              {returns.length}
+            </p>
+          </div>
 
-          <SummaryCard
-            title="Completed Returns"
-            value={completedReturns.toString()}
-          />
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-sm text-slate-500">Completed</p>
+            <p className="mt-2 text-2xl font-bold text-emerald-600">
+              {completedReturns.length}
+            </p>
+          </div>
 
-          <SummaryCard
-            title="Return Records"
-            value={returns.length.toString()}
-          />
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-sm text-slate-500">Pending</p>
+            <p className="mt-2 text-2xl font-bold text-amber-600">
+              {pendingReturns.length}
+            </p>
+          </div>
         </div>
 
-        {/* Create Return */}
-        <section
-          style={{
-            background: "#ffffff",
-            border: "1px solid #e2e8f0",
-            borderRadius: "14px",
-            padding: "24px",
-            marginBottom: "28px",
-            boxShadow: "0 4px 15px rgba(15, 23, 42, 0.04)",
-          }}
-        >
-          <h2
-            style={{
-              margin: "0 0 20px",
-              fontSize: "20px",
-              fontWeight: 800,
-            }}
-          >
-            Create Return
-          </h2>
+        {/* Add Return */}
+        <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+          <div className="mb-5">
+            <h2 className="text-xl font-bold">Create Return</h2>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns:
-                "repeat(auto-fit, minmax(200px, 1fr))",
-              gap: "16px",
-            }}
+            <p className="mt-1 text-sm text-slate-500">
+              Record a customer return and add the returned quantity back to inventory.
+            </p>
+          </div>
+
+          <form
+            onSubmit={addReturn}
+            className="grid gap-4 md:grid-cols-2 lg:grid-cols-3"
           >
-            <Field label="Store">
+            {/* Store */}
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Store
+              </label>
+
               <select
                 value={storeId}
                 onChange={(e) => setStoreId(e.target.value)}
-                style={inputStyle}
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
               >
-                <option value="">Select Store</option>
+                <option value="">Select store</option>
 
                 {stores.map((store) => (
                   <option key={store.id} value={store.id}>
@@ -412,40 +431,114 @@ export default function ReturnsPage() {
                   </option>
                 ))}
               </select>
-            </Field>
+            </div>
 
-            <Field label="Product">
+            {/* Sale */}
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Sale Invoice
+              </label>
+
               <select
-                value={productId}
-                onChange={(e) => setProductId(e.target.value)}
-                style={inputStyle}
+                value={saleId}
+                onChange={(e) => setSaleId(e.target.value)}
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
               >
-                <option value="">Select Product</option>
+                <option value="">Optional</option>
 
-                {products.map((product) => (
-                  <option key={product.id} value={product.id}>
-                    {product.name} — ₹
-                    {Number(product.selling_price).toFixed(2)}
+                {sales.map((sale) => (
+                  <option key={sale.id} value={sale.id}>
+                    {sale.invoice_number}
                   </option>
                 ))}
               </select>
-            </Field>
+            </div>
 
-            <Field label="Quantity">
+            {/* Customer */}
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Customer
+              </label>
+
+              <select
+                value={customerId}
+                onChange={(e) => setCustomerId(e.target.value)}
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+              >
+                <option value="">Optional</option>
+
+                {customers.map((customer) => (
+                  <option key={customer.id} value={customer.id}>
+                    {customer.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Product */}
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Product
+              </label>
+
+              <select
+                value={productId}
+                onChange={(e) => handleProductChange(e.target.value)}
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+              >
+                <option value="">Select product</option>
+
+                {products.map((product) => (
+                  <option key={product.id} value={product.id}>
+                    {product.name} — {product.sku}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Quantity */}
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Quantity
+              </label>
+
               <input
                 type="number"
                 min="1"
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
-                style={inputStyle}
+                placeholder="1"
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
               />
-            </Field>
+            </div>
 
-            <Field label="Return Type">
+            {/* Unit Price */}
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Unit Price (₹)
+              </label>
+
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={unitPrice}
+                onChange={(e) => setUnitPrice(e.target.value)}
+                placeholder="30"
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+              />
+            </div>
+
+            {/* Return Type */}
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Return Type
+              </label>
+
               <select
                 value={returnType}
                 onChange={(e) => setReturnType(e.target.value)}
-                style={inputStyle}
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
               >
                 <option value="customer_return">
                   Customer Return
@@ -454,147 +547,114 @@ export default function ReturnsPage() {
                   Supplier Return
                 </option>
               </select>
-            </Field>
+            </div>
 
-            <Field label="Reason">
+            {/* Reason */}
+            <div className="md:col-span-2">
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Reason
+              </label>
+
               <input
-                type="text"
-                placeholder="Damaged / Wrong product"
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                style={inputStyle}
+                placeholder="Damaged, wrong product, customer changed mind..."
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
               />
-            </Field>
-          </div>
+            </div>
 
-          <button
-            onClick={createReturn}
-            disabled={saving}
-            style={{
-              marginTop: "20px",
-              border: "none",
-              borderRadius: "10px",
-              padding: "12px 20px",
-              background: saving ? "#94a3b8" : "#16a34a",
-              color: "#ffffff",
-              fontWeight: 800,
-              cursor: saving ? "not-allowed" : "pointer",
-            }}
-          >
-            {saving ? "Processing..." : "Create Return"}
-          </button>
+            {/* Submit */}
+            <div className="flex items-end">
+              <button
+                type="submit"
+                disabled={saving}
+                className="w-full rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {saving ? "Saving..." : "Create Return"}
+              </button>
+            </div>
+          </form>
         </section>
 
-        {/* Return History */}
-        <section
-          style={{
-            background: "#ffffff",
-            border: "1px solid #e2e8f0",
-            borderRadius: "14px",
-            overflow: "hidden",
-            boxShadow: "0 4px 15px rgba(15, 23, 42, 0.04)",
-          }}
-        >
-          <div
-            style={{
-              padding: "20px",
-              borderBottom: "1px solid #e2e8f0",
-            }}
-          >
-            <h2
-              style={{
-                margin: 0,
-                fontSize: "20px",
-                fontWeight: 800,
-              }}
-            >
-              Return History
-            </h2>
+        {/* History */}
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-200 px-5 py-5 md:px-6">
+            <h2 className="text-xl font-bold">Return History</h2>
+
+            <p className="mt-1 text-sm text-slate-500">
+              Recent return transactions.
+            </p>
           </div>
 
           {loading ? (
-            <div
-              style={{
-                padding: "40px",
-                textAlign: "center",
-                color: "#64748b",
-              }}
-            >
+            <div className="p-8 text-center text-sm text-slate-500">
               Loading returns...
             </div>
           ) : returns.length === 0 ? (
-            <div
-              style={{
-                padding: "50px",
-                textAlign: "center",
-                color: "#64748b",
-              }}
-            >
-              No returns found.
+            <div className="p-10 text-center">
+              <p className="font-semibold text-slate-700">
+                No returns found
+              </p>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Create your first return using the form above.
+              </p>
             </div>
           ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table
-                style={{
-                  width: "100%",
-                  minWidth: "800px",
-                  borderCollapse: "collapse",
-                }}
-              >
-                <thead>
-                  <tr style={{ background: "#f8fafc" }}>
-                    <th style={thStyle}>Invoice</th>
-                    <th style={thStyle}>Type</th>
-                    <th style={thStyle}>Customer</th>
-                    <th style={thStyle}>Amount</th>
-                    <th style={thStyle}>Status</th>
-                    <th style={thStyle}>Reason</th>
-                    <th style={thStyle}>Date</th>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[850px] text-left text-sm">
+                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-5 py-4">Date</th>
+                    <th className="px-5 py-4">Invoice</th>
+                    <th className="px-5 py-4">Customer</th>
+                    <th className="px-5 py-4">Type</th>
+                    <th className="px-5 py-4">Amount</th>
+                    <th className="px-5 py-4">Status</th>
                   </tr>
                 </thead>
 
-                <tbody>
+                <tbody className="divide-y divide-slate-100">
                   {returns.map((item) => (
-                    <tr key={item.id}>
-                      <td style={tdStyle}>
-                        {item.sales?.invoice_number || "N/A"}
+                    <tr
+                      key={item.id}
+                      className="transition hover:bg-slate-50"
+                    >
+                      <td className="px-5 py-4 text-slate-600">
+                        {new Date(item.created_at).toLocaleDateString(
+                          "en-IN"
+                        )}
                       </td>
 
-                      <td style={tdStyle}>
-                        {item.return_type}
+                      <td className="px-5 py-4 font-semibold text-slate-900">
+                        {item.sales?.invoice_number ?? "—"}
                       </td>
 
-                      <td style={tdStyle}>
-                        {item.customers?.name || "Walk-in Customer"}
+                      <td className="px-5 py-4 text-slate-600">
+                        {item.customers?.name ?? "Walk-in Customer"}
                       </td>
 
-                      <td style={tdStyle}>
-                        <strong>
-                          ₹{Number(item.total_amount).toFixed(2)}
-                        </strong>
+                      <td className="px-5 py-4 capitalize text-slate-600">
+                        {item.return_type.replaceAll("_", " ")}
                       </td>
 
-                      <td style={tdStyle}>
+                      <td className="px-5 py-4 font-semibold text-slate-900">
+                        ₹
+                        {Number(item.total_amount).toLocaleString(
+                          "en-IN"
+                        )}
+                      </td>
+
+                      <td className="px-5 py-4">
                         <span
-                          style={{
-                            padding: "5px 10px",
-                            borderRadius: "999px",
-                            background: "#dcfce7",
-                            color: "#166534",
-                            fontSize: "13px",
-                            fontWeight: 700,
-                          }}
+                          className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                            item.status.toLowerCase() === "completed"
+                              ? "bg-emerald-100 text-emerald-700"
+                              : "bg-amber-100 text-amber-700"
+                          }`}
                         >
                           {item.status}
                         </span>
-                      </td>
-
-                      <td style={tdStyle}>
-                        {item.reason || "-"}
-                      </td>
-
-                      <td style={tdStyle}>
-                        {new Date(item.created_at).toLocaleString()}
                       </td>
                     </tr>
                   ))}
@@ -604,113 +664,6 @@ export default function ReturnsPage() {
           )}
         </section>
       </div>
-
-      <style jsx>{`
-        @media (max-width: 640px) {
-          main {
-            padding: 20px !important;
-          }
-
-          h1 {
-            font-size: 26px !important;
-          }
-        }
-      `}</style>
     </main>
-  )
-}
-
-function SummaryCard({
-  title,
-  value,
-}: {
-  title: string
-  value: string
-}) {
-  return (
-    <div
-      style={{
-        background: "#ffffff",
-        border: "1px solid #e2e8f0",
-        borderRadius: "14px",
-        padding: "20px",
-        boxShadow: "0 4px 15px rgba(15, 23, 42, 0.04)",
-      }}
-    >
-      <div
-        style={{
-          color: "#64748b",
-          fontSize: "14px",
-          fontWeight: 600,
-          marginBottom: "8px",
-        }}
-      >
-        {title}
-      </div>
-
-      <div
-        style={{
-          color: "#0f172a",
-          fontSize: "25px",
-          fontWeight: 800,
-        }}
-      >
-        {value}
-      </div>
-    </div>
-  )
-}
-
-function Field({
-  label,
-  children,
-}: {
-  label: string
-  children: React.ReactNode
-}) {
-  return (
-    <div>
-      <label
-        style={{
-          display: "block",
-          marginBottom: "7px",
-          fontSize: "14px",
-          fontWeight: 700,
-          color: "#334155",
-        }}
-      >
-        {label}
-      </label>
-
-      {children}
-    </div>
-  )
-}
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  boxSizing: "border-box",
-  padding: "11px 12px",
-  border: "1px solid #cbd5e1",
-  borderRadius: "9px",
-  background: "#ffffff",
-  color: "#0f172a",
-  fontSize: "14px",
-  outline: "none",
-}
-
-const thStyle: React.CSSProperties = {
-  textAlign: "left",
-  padding: "14px 16px",
-  fontSize: "13px",
-  color: "#475569",
-  fontWeight: 700,
-  borderBottom: "1px solid #e2e8f0",
-}
-
-const tdStyle: React.CSSProperties = {
-  padding: "15px 16px",
-  fontSize: "14px",
-  color: "#334155",
-  borderBottom: "1px solid #f1f5f9",
+  );
 }
