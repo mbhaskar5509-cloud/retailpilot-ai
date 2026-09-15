@@ -141,19 +141,21 @@ export default function DashboardPage() {
 
           <nav>
             {[
-  ['📊', 'Dashboard', '/dashboard'],
-  ['📦', 'Products', '/products'],
-  ['🏪', 'Stores', '#'],
-  ['🚚', 'Purchases', '#'],
-  ['📋', 'Inventory', '#'],
-  ['🛒', 'POS Sales', '#'],
-  ['👥', 'Customers', '#'],
-  ['💳', 'Payments', '#'],
-  ['🔄', 'Returns', '#'],
-  ['💸', 'Expenses', '#'],
-  ['🤖', 'AI Insights', '#'],
-  ['📈', 'Reports', '#'],
-].map(([icon, name, href], index) => (
+              ['📊', 'Dashboard', '/dashboard'],
+              ['📦', 'Products', '/products'],
+              ['🏪', 'Stores', '/stores'],
+              ['🚚', 'Suppliers', '/suppliers'],
+              ['🛒', 'Purchases', '/purchases'],
+              ['📋', 'Inventory', '/inventory'],
+              ['🧾', 'POS Sales', '/pos'],
+              ['👥', 'Customers', '/customers'],
+              ['💳', 'Payments', '/payments'],
+              ['🔄', 'Returns', '/returns'],
+              ['💸', 'Expenses', '/expenses'],
+              ['🔁', 'Stock Transfers', '/stock-transfers'],
+              ['🤖', 'AI Insights', '/ai-insights'],
+              ['📈', 'Reports', '/reports'],
+            ].map(([icon, name, href], index) => (
   <Link
     key={name}
     href={href}
