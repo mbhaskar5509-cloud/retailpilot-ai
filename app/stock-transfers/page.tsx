@@ -1,210 +1,235 @@
-"use client";
+"use client"
 
-import { FormEvent, useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useEffect, useState } from "react"
+import { createClient } from "@/lib/supabase/client"
 
 type Store = {
-  id: string;
-  name: string;
-};
+  id: string
+  name: string
+}
 
 type Product = {
-  id: string;
-  name: string;
-  sku: string;
-};
+  id: string
+  name: string
+  sku: string
+}
 
 type Transfer = {
-  id: string;
-  from_store_id: string;
-  to_store_id: string;
-  status: string;
-  notes: string | null;
-  created_at: string;
-  from_store: Store | null;
-  to_store: Store | null;
-};
+  id: string
+  from_store_id: string
+  to_store_id: string
+  status: string
+  created_at: string
+  notes: string | null
+  from_store?: { name: string } | null
+  to_store?: { name: string } | null
+}
 
 type TransferItem = {
-  id: string;
-  product_id: string;
-  quantity: number;
-};
+  product_id: string
+  quantity: number
+}
 
 export default function StockTransfersPage() {
-  const supabase = createClient();
+  const [transfers, setTransfers] = useState<Transfer[]>([])
+  const [stores, setStores] = useState<Store[]>([])
+  const [products, setProducts] = useState<Product[]>([])
 
-  const [transfers, setTransfers] = useState<Transfer[]>([]);
-  const [stores, setStores] = useState<Store[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
+  const [fromStoreId, setFromStoreId] = useState("")
+  const [toStoreId, setToStoreId] = useState("")
+  const [notes, setNotes] = useState("")
 
-  const [tenantId, setTenantId] = useState<string | null>(null);
+  const [items, setItems] = useState<TransferItem[]>([
+    {
+      product_id: "",
+      quantity: 1,
+    },
+  ])
 
-  const [fromStoreId, setFromStoreId] = useState("");
-  const [toStoreId, setToStoreId] = useState("");
-  const [productId, setProductId] = useState("");
-  const [quantity, setQuantity] = useState("");
-  const [notes, setNotes] = useState("");
-
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState("")
+  const [error, setError] = useState("")
 
   useEffect(() => {
-    loadData();
-  }, []);
+    loadTransfers()
+  }, [])
 
-  async function loadData() {
-    setLoading(true);
-    setMessage("");
+  async function getTenantId() {
+    const supabase = createClient()
 
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (!user) {
+      throw new Error("Please login first.")
+    }
+
+    const { data: profile, error } = await supabase
+      .from("user_profiles")
+      .select("tenant_id")
+      .eq("id", user.id)
+      .single()
+
+    if (error || !profile?.tenant_id) {
+      throw new Error("Business profile not found.")
+    }
+
+    return profile.tenant_id
+  }
+
+  async function loadTransfers() {
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      setLoading(true)
+      setError("")
 
-      if (!user) {
-        setMessage("Please login first.");
-        setLoading(false);
-        return;
+      const supabase = createClient()
+      const tenantId = await getTenantId()
+
+      const [
+        transfersResult,
+        storesResult,
+        productsResult,
+      ] = await Promise.all([
+        supabase
+          .from("stock_transfers")
+          .select(
+            `
+            id,
+            from_store_id,
+            to_store_id,
+            status,
+            created_at,
+            notes,
+            from_store:stores!stock_transfers_from_store_id_fkey(name),
+            to_store:stores!stock_transfers_to_store_id_fkey(name)
+          `
+          )
+          .eq("tenant_id", tenantId)
+          .order("created_at", { ascending: false }),
+
+        supabase
+          .from("stores")
+          .select("id,name")
+          .eq("tenant_id", tenantId)
+          .eq("is_active", true)
+          .order("name"),
+
+        supabase
+          .from("products")
+          .select("id,name,sku")
+          .eq("tenant_id", tenantId)
+          .eq("is_active", true)
+          .order("name"),
+      ])
+
+      if (transfersResult.error) {
+        throw transfersResult.error
       }
 
-      const { data: profile, error: profileError } = await supabase
-        .from("user_profiles")
-        .select("tenant_id")
-        .eq("id", user.id)
-        .single();
-
-      if (profileError || !profile?.tenant_id) {
-        setMessage("Tenant profile not found.");
-        setLoading(false);
-        return;
+      if (storesResult.error) {
+        throw storesResult.error
       }
 
-      const currentTenantId = profile.tenant_id;
-      setTenantId(currentTenantId);
-
-      const [transferResult, storeResult, productResult] =
-        await Promise.all([
-          supabase
-            .from("stock_transfers")
-            .select(
-              `
-                id,
-                from_store_id,
-                to_store_id,
-                status,
-                notes,
-                created_at,
-                from_store:stores!stock_transfers_from_store_id_fkey (
-                  id,
-                  name
-                ),
-                to_store:stores!stock_transfers_to_store_id_fkey (
-                  id,
-                  name
-                )
-              `
-            )
-            .eq("tenant_id", currentTenantId)
-            .order("created_at", { ascending: false }),
-
-          supabase
-            .from("stores")
-            .select("id, name")
-            .eq("tenant_id", currentTenantId)
-            .eq("is_active", true)
-            .order("name"),
-
-          supabase
-            .from("products")
-            .select("id, name, sku")
-            .eq("tenant_id", currentTenantId)
-            .eq("is_active", true)
-            .order("name"),
-        ]);
-
-      if (transferResult.error) {
-        throw transferResult.error;
+      if (productsResult.error) {
+        throw productsResult.error
       }
 
-      if (storeResult.error) {
-        throw storeResult.error;
-      }
+      const formattedTransfers = (transfersResult.data || []).map(
+        (transfer: any) => ({
+          ...transfer,
+          from_store: Array.isArray(transfer.from_store)
+            ? transfer.from_store[0] || null
+            : transfer.from_store || null,
+          to_store: Array.isArray(transfer.to_store)
+            ? transfer.to_store[0] || null
+            : transfer.to_store || null,
+        })
+      )
 
-      if (productResult.error) {
-        throw productResult.error;
-      }
-
-      const transferData: Transfer[] = (
-        transferResult.data ?? []
-      ).map((transfer: any) => ({
-        id: transfer.id,
-        from_store_id: transfer.from_store_id,
-        to_store_id: transfer.to_store_id,
-        status: transfer.status,
-        notes: transfer.notes ?? null,
-        created_at: transfer.created_at,
-
-        from_store: Array.isArray(transfer.from_store)
-          ? transfer.from_store[0] ?? null
-          : transfer.from_store ?? null,
-
-        to_store: Array.isArray(transfer.to_store)
-          ? transfer.to_store[0] ?? null
-          : transfer.to_store ?? null,
-      }));
-
-      setTransfers(transferData);
-      setStores((storeResult.data ?? []) as Store[]);
-      setProducts((productResult.data ?? []) as Product[]);
-    } catch (error) {
-      console.error("Stock transfers load error:", error);
-
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "Unable to load stock transfers."
-      );
+      setTransfers(formattedTransfers)
+      setStores(storesResult.data || [])
+      setProducts(productsResult.data || [])
+    } catch (err: any) {
+      console.error(err)
+      setError(err?.message || "Unable to load stock transfers.")
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
   }
 
-  async function createTransfer(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function updateItem(
+    index: number,
+    field: keyof TransferItem,
+    value: string
+  ) {
+    setItems((current) =>
+      current.map((item, i) => {
+        if (i !== index) return item
 
-    if (!tenantId) {
-      setMessage("Tenant not found.");
-      return;
-    }
+        if (field === "product_id") {
+          return {
+            ...item,
+            product_id: value,
+          }
+        }
 
-    if (!fromStoreId || !toStoreId) {
-      setMessage("Please select both stores.");
-      return;
-    }
+        return {
+          ...item,
+          quantity: Math.max(1, Number(value) || 1),
+        }
+      })
+    )
+  }
 
-    if (fromStoreId === toStoreId) {
-      setMessage("From Store and To Store must be different.");
-      return;
-    }
+  function addItem() {
+    setItems((current) => [
+      ...current,
+      {
+        product_id: "",
+        quantity: 1,
+      },
+    ])
+  }
 
-    if (!productId) {
-      setMessage("Please select a product.");
-      return;
-    }
+  function removeItem(index: number) {
+    if (items.length === 1) return
 
-    const qty = Number(quantity);
+    setItems((current) =>
+      current.filter((_, i) => i !== index)
+    )
+  }
 
-    if (!qty || qty <= 0) {
-      setMessage("Enter a valid quantity.");
-      return;
-    }
-
-    setSaving(true);
-    setMessage("");
-
+  async function createTransfer() {
     try {
+      setSaving(true)
+      setMessage("")
+      setError("")
+
+      if (!fromStoreId || !toStoreId) {
+        setError("Please select both stores.")
+        return
+      }
+
+      if (fromStoreId === toStoreId) {
+        setError("From Store and To Store must be different.")
+        return
+      }
+
+      if (items.some((item) => !item.product_id)) {
+        setError("Please select a product for every item.")
+        return
+      }
+
+      if (items.some((item) => item.quantity <= 0)) {
+        setError("Transfer quantity must be greater than zero.")
+        return
+      }
+
+      const supabase = createClient()
+      const tenantId = await getTenantId()
+
       const { data: transfer, error: transferError } = await supabase
         .from("stock_transfers")
         .insert({
@@ -215,260 +240,272 @@ export default function StockTransfersPage() {
           notes: notes.trim() || null,
         })
         .select("id")
-        .single();
+        .single()
 
       if (transferError) {
-        throw transferError;
+        throw transferError
       }
 
-      const { error: itemError } = await supabase
-        .from("stock_transfer_items")
-        .insert({
-          tenant_id: tenantId,
-          transfer_id: transfer.id,
-          product_id: productId,
-          quantity: qty,
-        });
+      const transferItems = items.map((item) => ({
+        tenant_id: tenantId,
+        transfer_id: transfer.id,
+        product_id: item.product_id,
+        quantity: item.quantity,
+      }))
 
-      if (itemError) {
+      const { error: itemsError } = await supabase
+        .from("stock_transfer_items")
+        .insert(transferItems)
+
+      if (itemsError) {
         await supabase
           .from("stock_transfers")
           .delete()
           .eq("id", transfer.id)
-          .eq("tenant_id", tenantId);
 
-        throw itemError;
+        throw itemsError
       }
 
-      setMessage("Stock transfer created successfully.");
+      setMessage("Stock transfer created successfully.")
 
-      setFromStoreId("");
-      setToStoreId("");
-      setProductId("");
-      setQuantity("");
-      setNotes("");
+      setFromStoreId("")
+      setToStoreId("")
+      setNotes("")
+      setItems([
+        {
+          product_id: "",
+          quantity: 1,
+        },
+      ])
 
-      await loadData();
-    } catch (error) {
-      console.error("Create transfer error:", error);
-
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "Unable to create stock transfer."
-      );
+      await loadTransfers()
+    } catch (err: any) {
+      console.error(err)
+      setError(err?.message || "Unable to create stock transfer.")
     } finally {
-      setSaving(false);
+      setSaving(false)
     }
   }
 
   async function updateTransferStatus(
-    transfer: Transfer,
+    transferId: string,
     newStatus: string
   ) {
-    if (!tenantId) return;
-
-    setMessage("");
-
     try {
-      const { error } = await supabase
+      setError("")
+      setMessage("")
+
+      const supabase = createClient()
+
+      const tenantId = await getTenantId()
+
+      const { data: transfer, error: transferError } = await supabase
+        .from("stock_transfers")
+        .select(
+          "id,from_store_id,to_store_id,status"
+        )
+        .eq("id", transferId)
+        .eq("tenant_id", tenantId)
+        .single()
+
+      if (transferError) {
+        throw transferError
+      }
+
+      const validTransitions: Record<string, string> = {
+        draft: "requested",
+        requested: "approved",
+        approved: "dispatched",
+        dispatched: "received",
+      }
+
+      if (validTransitions[transfer.status] !== newStatus) {
+        setError(
+          `Invalid status transition: ${transfer.status} → ${newStatus}`
+        )
+        return
+      }
+
+      if (newStatus === "dispatched") {
+        const { data: transferItems, error: itemError } =
+          await supabase
+            .from("stock_transfer_items")
+            .select("product_id,quantity")
+            .eq("transfer_id", transferId)
+            .eq("tenant_id", tenantId)
+
+        if (itemError) {
+          throw itemError
+        }
+
+        const movements = (transferItems || []).map((item) => ({
+          tenant_id: tenantId,
+          store_id: transfer.from_store_id,
+          product_id: item.product_id,
+          movement_type: "transfer_out",
+          quantity: -Math.abs(Number(item.quantity)),
+          reference_id: transferId,
+          notes: "Stock transfer dispatched",
+        }))
+
+        if (movements.length > 0) {
+          const { error: movementError } = await supabase
+            .from("stock_movements")
+            .insert(movements)
+
+          if (movementError) {
+            throw movementError
+          }
+        }
+      }
+
+      if (newStatus === "received") {
+        const { data: transferItems, error: itemError } =
+          await supabase
+            .from("stock_transfer_items")
+            .select("product_id,quantity")
+            .eq("transfer_id", transferId)
+            .eq("tenant_id", tenantId)
+
+        if (itemError) {
+          throw itemError
+        }
+
+        const movements = (transferItems || []).map((item) => ({
+          tenant_id: tenantId,
+          store_id: transfer.to_store_id,
+          product_id: item.product_id,
+          movement_type: "transfer_in",
+          quantity: Math.abs(Number(item.quantity)),
+          reference_id: transferId,
+          notes: "Stock transfer received",
+        }))
+
+        if (movements.length > 0) {
+          const { error: movementError } = await supabase
+            .from("stock_movements")
+            .insert(movements)
+
+          if (movementError) {
+            throw movementError
+          }
+        }
+      }
+
+      const { error: updateError } = await supabase
         .from("stock_transfers")
         .update({
           status: newStatus,
         })
-        .eq("id", transfer.id)
-        .eq("tenant_id", tenantId);
+        .eq("id", transferId)
+        .eq("tenant_id", tenantId)
 
-      if (error) {
-        throw error;
+      if (updateError) {
+        throw updateError
       }
-
-      /*
-       * Inventory ledger updates are intentionally handled only
-       * when the transfer reaches "received".
-       */
-      if (newStatus === "received") {
-        const { data: items, error: itemsError } = await supabase
-          .from("stock_transfer_items")
-          .select("id, product_id, quantity")
-          .eq("tenant_id", tenantId)
-          .eq("transfer_id", transfer.id);
-
-        if (itemsError) {
-          throw itemsError;
-        }
-
-        const transferItems = (items ?? []) as TransferItem[];
-
-        for (const item of transferItems) {
-          const { error: outError } = await supabase
-            .from("stock_movements")
-            .insert({
-              tenant_id: tenantId,
-              store_id: transfer.from_store_id,
-              product_id: item.product_id,
-              movement_type: "transfer_out",
-              quantity: -Math.abs(Number(item.quantity)),
-              reference_id: transfer.id,
-              notes: "Stock transfer out",
-            });
-
-          if (outError) {
-            throw outError;
-          }
-
-          const { error: inError } = await supabase
-            .from("stock_movements")
-            .insert({
-              tenant_id: tenantId,
-              store_id: transfer.to_store_id,
-              product_id: item.product_id,
-              movement_type: "transfer_in",
-              quantity: Math.abs(Number(item.quantity)),
-              reference_id: transfer.id,
-              notes: "Stock transfer in",
-            });
-
-          if (inError) {
-            throw inError;
-          }
-        }
-      }
-
-      setMessage(`Transfer status updated to ${newStatus}.`);
-
-      await loadData();
-    } catch (error) {
-      console.error("Transfer status error:", error);
 
       setMessage(
-        error instanceof Error
-          ? error.message
-          : "Unable to update transfer status."
-      );
+        newStatus === "received"
+          ? "Transfer received and inventory updated successfully."
+          : `Transfer moved to ${newStatus}.`
+      )
+
+      await loadTransfers()
+    } catch (err: any) {
+      console.error(err)
+      setError(err?.message || "Unable to update transfer.")
     }
   }
-
-  const totalTransfers = transfers.length;
-
-  const requestedCount = transfers.filter(
-    (item) => item.status === "requested"
-  ).length;
-
-  const approvedCount = transfers.filter(
-    (item) => item.status === "approved"
-  ).length;
-
-  const receivedCount = transfers.filter(
-    (item) => item.status === "received"
-  ).length;
 
   function getNextStatus(status: string) {
-    switch (status) {
-      case "draft":
-        return "requested";
-      case "requested":
-        return "approved";
-      case "approved":
-        return "dispatched";
-      case "dispatched":
-        return "received";
-      default:
-        return null;
+    const transitions: Record<string, string> = {
+      draft: "requested",
+      requested: "approved",
+      approved: "dispatched",
+      dispatched: "received",
     }
+
+    return transitions[status]
   }
 
-  function getStatusLabel(status: string) {
-    return status.replaceAll("_", " ");
+  function getStatusClass(status: string) {
+    if (status === "received") {
+      return "bg-emerald-950 text-emerald-400"
+    }
+
+    if (status === "dispatched") {
+      return "bg-blue-950 text-blue-400"
+    }
+
+    if (status === "approved") {
+      return "bg-purple-950 text-purple-400"
+    }
+
+    if (status === "requested") {
+      return "bg-yellow-950 text-yellow-400"
+    }
+
+    return "bg-slate-800 text-slate-300"
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 md:px-8">
+    <main className="min-h-screen bg-slate-950 px-4 py-8 text-white sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl">
+
         {/* Header */}
-        <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-sm font-semibold text-indigo-600">
-              RETAILPILOT AI
+            <p className="text-sm font-semibold text-cyan-400">
+              INVENTORY OPERATIONS
             </p>
 
-            <h1 className="mt-1 text-3xl font-bold tracking-tight">
+            <h1 className="mt-1 text-3xl font-bold">
               Stock Transfers
             </h1>
 
-            <p className="mt-1 text-sm text-slate-500">
-              Move inventory safely between your stores.
+            <p className="mt-2 text-sm text-slate-400">
+              Move inventory between stores using a controlled transfer
+              workflow.
             </p>
           </div>
 
           <button
-            onClick={loadData}
-            className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+            onClick={loadTransfers}
+            className="rounded-xl border border-slate-700 bg-slate-900 px-5 py-3 text-sm font-semibold hover:bg-slate-800"
           >
-            Refresh Data
+            Refresh
           </button>
         </div>
 
-        {/* Message */}
         {message && (
-          <div className="mb-6 rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm font-medium text-indigo-700">
+          <div className="mb-6 rounded-xl border border-emerald-800 bg-emerald-950/40 px-4 py-3 text-sm text-emerald-300">
             {message}
           </div>
         )}
 
-        {/* KPI Cards */}
-        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-slate-500">Total Transfers</p>
-            <p className="mt-2 text-2xl font-bold">{totalTransfers}</p>
+        {error && (
+          <div className="mb-6 rounded-xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-300">
+            {error}
           </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-slate-500">Requested</p>
-            <p className="mt-2 text-2xl font-bold text-amber-600">
-              {requestedCount}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-slate-500">Approved</p>
-            <p className="mt-2 text-2xl font-bold text-blue-600">
-              {approvedCount}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-slate-500">Received</p>
-            <p className="mt-2 text-2xl font-bold text-emerald-600">
-              {receivedCount}
-            </p>
-          </div>
-        </div>
+        )}
 
         {/* Create Transfer */}
-        <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-          <div className="mb-5">
-            <h2 className="text-xl font-bold">Create Stock Transfer</h2>
+        <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5 sm:p-6">
+          <h2 className="text-xl font-semibold">
+            Create Stock Transfer
+          </h2>
 
-            <p className="mt-1 text-sm text-slate-500">
-              Create a transfer request between two stores.
-            </p>
-          </div>
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
 
-          <form
-            onSubmit={createTransfer}
-            className="grid gap-4 md:grid-cols-2 lg:grid-cols-3"
-          >
-            {/* From Store */}
             <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+              <label className="mb-2 block text-sm text-slate-300">
                 From Store
               </label>
 
               <select
                 value={fromStoreId}
                 onChange={(e) => setFromStoreId(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white outline-none focus:border-cyan-500"
               >
                 <option value="">Select source store</option>
 
@@ -480,16 +517,15 @@ export default function StockTransfersPage() {
               </select>
             </div>
 
-            {/* To Store */}
             <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+              <label className="mb-2 block text-sm text-slate-300">
                 To Store
               </label>
 
               <select
                 value={toStoreId}
                 onChange={(e) => setToStoreId(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white outline-none focus:border-cyan-500"
               >
                 <option value="">Select destination store</option>
 
@@ -501,179 +537,260 @@ export default function StockTransfersPage() {
               </select>
             </div>
 
-            {/* Product */}
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Product
-              </label>
+          </div>
 
-              <select
-                value={productId}
-                onChange={(e) => setProductId(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-              >
-                <option value="">Select product</option>
+          <div className="mt-4">
+            <label className="mb-2 block text-sm text-slate-300">
+              Notes
+            </label>
 
-                {products.map((product) => (
-                  <option key={product.id} value={product.id}>
-                    {product.name} — {product.sku}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <input
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Optional transfer notes"
+              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white placeholder:text-slate-600 outline-none focus:border-cyan-500"
+            />
+          </div>
 
-            {/* Quantity */}
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Quantity
-              </label>
+          {/* Items */}
+          <div className="mt-8">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold">
+                Transfer Items
+              </h3>
 
-              <input
-                type="number"
-                min="1"
-                value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-                placeholder="10"
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-              />
-            </div>
-
-            {/* Notes */}
-            <div className="md:col-span-2">
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Notes
-              </label>
-
-              <input
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Optional transfer notes"
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-              />
-            </div>
-
-            {/* Submit */}
-            <div className="flex items-end">
               <button
-                type="submit"
-                disabled={saving}
-                className="w-full rounded-xl bg-indigo-600 px-5 py-3 font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                type="button"
+                onClick={addItem}
+                className="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-400"
               >
-                {saving ? "Creating..." : "Create Transfer"}
+                + Add Item
               </button>
             </div>
-          </form>
+
+            <div className="space-y-3">
+
+              {items.map((item, index) => (
+                <div
+                  key={index}
+                  className="grid gap-3 rounded-xl border border-slate-800 bg-slate-950 p-4 md:grid-cols-[2fr_1fr_auto]"
+                >
+
+                  <div>
+                    <label className="mb-2 block text-xs text-slate-500">
+                      Product
+                    </label>
+
+                    <select
+                      value={item.product_id}
+                      onChange={(e) =>
+                        updateItem(
+                          index,
+                          "product_id",
+                          e.target.value
+                        )
+                      }
+                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2.5 text-white outline-none focus:border-cyan-500"
+                    >
+                      <option value="">Select product</option>
+
+                      {products.map((product) => (
+                        <option
+                          key={product.id}
+                          value={product.id}
+                        >
+                          {product.name} ({product.sku})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-xs text-slate-500">
+                      Quantity
+                    </label>
+
+                    <input
+                      type="number"
+                      min="1"
+                      value={item.quantity}
+                      onChange={(e) =>
+                        updateItem(
+                          index,
+                          "quantity",
+                          e.target.value
+                        )
+                      }
+                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2.5 text-white outline-none focus:border-cyan-500"
+                    />
+                  </div>
+
+                  <div className="flex items-end">
+                    <button
+                      type="button"
+                      onClick={() => removeItem(index)}
+                      disabled={items.length === 1}
+                      className="w-full rounded-lg border border-red-900 px-4 py-2.5 text-sm text-red-400 hover:bg-red-950 disabled:cursor-not-allowed disabled:opacity-30 md:w-auto"
+                    >
+                      Remove
+                    </button>
+                  </div>
+
+                </div>
+              ))}
+
+            </div>
+          </div>
+
+          <div className="mt-6 flex justify-end">
+            <button
+              type="button"
+              onClick={createTransfer}
+              disabled={saving}
+              className="rounded-xl bg-cyan-500 px-6 py-3 font-semibold text-slate-950 hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {saving ? "Creating..." : "Create Transfer"}
+            </button>
+          </div>
         </section>
 
         {/* Transfer History */}
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 px-5 py-5 md:px-6">
-            <h2 className="text-xl font-bold">Transfer History</h2>
+        <section className="mt-8">
+          <div className="mb-4">
+            <h2 className="text-xl font-semibold">
+              Transfer History
+            </h2>
 
             <p className="mt-1 text-sm text-slate-500">
-              Track every store-to-store inventory movement.
+              Manage the transfer workflow from request to receipt.
             </p>
           </div>
 
           {loading ? (
-            <div className="p-8 text-center text-sm text-slate-500">
+            <div className="rounded-2xl border border-slate-800 bg-slate-900 p-8 text-center text-slate-400">
               Loading transfers...
             </div>
           ) : transfers.length === 0 ? (
-            <div className="p-10 text-center">
-              <p className="font-semibold text-slate-700">
-                No stock transfers found
+            <div className="rounded-2xl border border-slate-800 bg-slate-900 p-8 text-center">
+              <p className="font-medium">
+                No stock transfers yet.
               </p>
 
               <p className="mt-1 text-sm text-slate-500">
-                Create your first transfer using the form above.
+                Create a transfer above to move inventory between stores.
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[950px] text-left text-sm">
-                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                  <tr>
-                    <th className="px-5 py-4">Date</th>
-                    <th className="px-5 py-4">From</th>
-                    <th className="px-5 py-4">To</th>
-                    <th className="px-5 py-4">Status</th>
-                    <th className="px-5 py-4">Notes</th>
-                    <th className="px-5 py-4">Action</th>
-                  </tr>
-                </thead>
+            <div className="space-y-4">
+              {transfers.map((transfer) => {
+                const nextStatus = getNextStatus(transfer.status)
 
-                <tbody className="divide-y divide-slate-100">
-                  {transfers.map((transfer) => {
-                    const nextStatus = getNextStatus(transfer.status);
+                return (
+                  <div
+                    key={transfer.id}
+                    className="rounded-2xl border border-slate-800 bg-slate-900 p-5"
+                  >
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
 
-                    return (
-                      <tr
-                        key={transfer.id}
-                        className="transition hover:bg-slate-50"
-                      >
-                        <td className="px-5 py-4 text-slate-600">
-                          {new Date(
-                            transfer.created_at
-                          ).toLocaleDateString("en-IN")}
-                        </td>
-
-                        <td className="px-5 py-4 font-medium text-slate-900">
-                          {transfer.from_store?.name ?? "—"}
-                        </td>
-
-                        <td className="px-5 py-4 font-medium text-slate-900">
-                          {transfer.to_store?.name ?? "—"}
-                        </td>
-
-                        <td className="px-5 py-4">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-3">
                           <span
-                            className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold capitalize ${
-                              transfer.status === "received"
-                                ? "bg-emerald-100 text-emerald-700"
-                                : transfer.status === "approved"
-                                ? "bg-blue-100 text-blue-700"
-                                : transfer.status === "dispatched"
-                                ? "bg-purple-100 text-purple-700"
-                                : "bg-amber-100 text-amber-700"
-                            }`}
+                            className={`rounded-full px-3 py-1 text-xs font-semibold uppercase ${getStatusClass(
+                              transfer.status
+                            )}`}
                           >
-                            {getStatusLabel(transfer.status)}
+                            {transfer.status}
                           </span>
-                        </td>
 
-                        <td className="max-w-[220px] truncate px-5 py-4 text-slate-600">
-                          {transfer.notes ?? "—"}
-                        </td>
+                          <span className="text-xs text-slate-500">
+                            {new Date(
+                              transfer.created_at
+                            ).toLocaleString("en-IN")}
+                          </span>
+                        </div>
 
-                        <td className="px-5 py-4">
-                          {nextStatus ? (
-                            <button
-                              onClick={() =>
-                                updateTransferStatus(
-                                  transfer,
-                                  nextStatus
-                                )
-                              }
-                              className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white transition hover:bg-slate-800"
-                            >
-                              Mark {getStatusLabel(nextStatus)}
-                            </button>
-                          ) : (
-                            <span className="text-xs font-semibold text-emerald-600">
-                              Completed
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                        <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+                          <span className="font-semibold">
+                            {transfer.from_store?.name || "Source Store"}
+                          </span>
+
+                          <span className="text-cyan-400">
+                            →
+                          </span>
+
+                          <span className="font-semibold">
+                            {transfer.to_store?.name || "Destination Store"}
+                          </span>
+                        </div>
+
+                        {transfer.notes && (
+                          <p className="mt-2 text-sm text-slate-500">
+                            {transfer.notes}
+                          </p>
+                        )}
+                      </div>
+
+                      {nextStatus && (
+                        <button
+                          onClick={() =>
+                            updateTransferStatus(
+                              transfer.id,
+                              nextStatus
+                            )
+                          }
+                          className="rounded-xl bg-cyan-500 px-5 py-3 text-sm font-semibold text-slate-950 hover:bg-cyan-400"
+                        >
+                          Mark {nextStatus}
+                        </button>
+                      )}
+
+                      {transfer.status === "received" && (
+                        <span className="rounded-xl border border-emerald-800 bg-emerald-950/30 px-5 py-3 text-sm font-semibold text-emerald-400">
+                          ✓ Completed
+                        </span>
+                      )}
+
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           )}
         </section>
+
+        {/* Workflow */}
+        <section className="mt-8 rounded-2xl border border-slate-800 bg-slate-900 p-6">
+          <h2 className="text-lg font-semibold">
+            Transfer Workflow
+          </h2>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-5">
+
+            {[
+              "Draft",
+              "Requested",
+              "Approved",
+              "Dispatched",
+              "Received",
+            ].map((status, index) => (
+              <div
+                key={status}
+                className="rounded-xl border border-slate-800 bg-slate-950 p-4 text-center"
+              >
+                <div className="mx-auto flex h-8 w-8 items-center justify-center rounded-full bg-slate-800 text-sm font-bold">
+                  {index + 1}
+                </div>
+
+                <p className="mt-2 text-sm font-medium">
+                  {status}
+                </p>
+              </div>
+            ))}
+
+          </div>
+        </section>
+
       </div>
     </main>
-  );
+  )
 }
