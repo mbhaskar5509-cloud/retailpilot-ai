@@ -4,8 +4,6 @@ import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 export default function SignupPage() {
-  const supabase = createClient()
-
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [message, setMessage] = useState('')
@@ -13,6 +11,8 @@ export default function SignupPage() {
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault()
     setMessage('Creating account...')
+
+    const supabase = createClient()
 
     const { error } = await supabase.auth.signUp({
       email,
