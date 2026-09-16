@@ -14,8 +14,6 @@ type Store = {
 }
 
 export default function StoresPage() {
-  const supabase = createClient()
-
   const [stores, setStores] = useState<Store[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -32,6 +30,8 @@ export default function StoresPage() {
   }, [])
 
   async function getTenantId() {
+    const supabase = createClient()
+
     const {
       data: { user },
     } = await supabase.auth.getUser()
@@ -59,6 +59,7 @@ export default function StoresPage() {
     setLoading(true)
     setMessage('')
 
+    const supabase = createClient()
     const tenantId = await getTenantId()
 
     if (!tenantId) {
@@ -92,6 +93,7 @@ export default function StoresPage() {
     setSaving(true)
     setMessage('')
 
+    const supabase = createClient()
     const tenantId = await getTenantId()
 
     if (!tenantId) {
@@ -133,6 +135,8 @@ export default function StoresPage() {
 
     if (!confirmed) return
 
+    const supabase = createClient()
+
     const { error } = await supabase
       .from('stores')
       .update({ is_active: false })
@@ -155,7 +159,6 @@ export default function StoresPage() {
         color: '#0f172a',
       }}
     >
-      {/* HEADER */}
       <header
         style={{
           background: '#0f172a',
@@ -206,7 +209,6 @@ export default function StoresPage() {
           padding: '30px 20px',
         }}
       >
-        {/* TITLE */}
         <div style={{ marginBottom: '25px' }}>
           <h2
             style={{
@@ -227,7 +229,6 @@ export default function StoresPage() {
           </p>
         </div>
 
-        {/* MESSAGE */}
         {message && (
           <div
             style={{
@@ -243,7 +244,6 @@ export default function StoresPage() {
           </div>
         )}
 
-        {/* ADD STORE */}
         <section
           style={{
             background: 'white',
@@ -334,7 +334,6 @@ export default function StoresPage() {
           </form>
         </section>
 
-        {/* STORE LIST */}
         <section
           style={{
             background: 'white',
@@ -564,3 +563,4 @@ const tdStyle = {
   fontSize: '13px',
   borderBottom: '1px solid #f1f5f9',
 }
+
