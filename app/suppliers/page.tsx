@@ -15,8 +15,6 @@ type Supplier = {
 };
 
 export default function SuppliersPage() {
-  const supabase = createClient();
-
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -35,44 +33,47 @@ export default function SuppliersPage() {
     loadSuppliers();
   }, []);
 
+  async function getTenantId() {
+    const supabase = createClient();
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      throw new Error("Please login first.");
+    }
+
+    const { data: profile, error } = await supabase
+      .from("user_profiles")
+      .select("tenant_id")
+      .eq("id", user.id)
+      .single();
+
+    if (error || !profile?.tenant_id) {
+      throw new Error("Tenant information not found.");
+    }
+
+    return profile.tenant_id;
+  }
+
   async function loadSuppliers() {
     setLoading(true);
     setMessage("");
 
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        setMessage("Please login first.");
-        setLoading(false);
-        return;
-      }
-
-      const { data: profile, error: profileError } = await supabase
-        .from("user_profiles")
-        .select("tenant_id")
-        .eq("id", user.id)
-        .single();
-
-      if (profileError || !profile?.tenant_id) {
-        setMessage("Tenant information not found.");
-        setLoading(false);
-        return;
-      }
+      const supabase = createClient();
+      const tenantId = await getTenantId();
 
       const { data, error } = await supabase
         .from("suppliers")
         .select(
           "id,name,contact_person,phone,email,address,payment_terms,is_active"
         )
-        .eq("tenant_id", profile.tenant_id)
+        .eq("tenant_id", tenantId)
         .order("created_at", { ascending: false });
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
       setSuppliers(data || []);
     } catch (error) {
@@ -97,28 +98,11 @@ export default function SuppliersPage() {
     setMessage("");
 
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        setMessage("Please login first.");
-        return;
-      }
-
-      const { data: profile, error: profileError } = await supabase
-        .from("user_profiles")
-        .select("tenant_id")
-        .eq("id", user.id)
-        .single();
-
-      if (profileError || !profile?.tenant_id) {
-        setMessage("Tenant information not found.");
-        return;
-      }
+      const supabase = createClient();
+      const tenantId = await getTenantId();
 
       const { error } = await supabase.from("suppliers").insert({
-        tenant_id: profile.tenant_id,
+        tenant_id: tenantId,
         name: form.name.trim(),
         contact_person: form.contact_person.trim() || null,
         phone: form.phone.trim() || null,
@@ -128,9 +112,7 @@ export default function SuppliersPage() {
         is_active: true,
       });
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
       setForm({
         name: "",
@@ -161,14 +143,14 @@ export default function SuppliersPage() {
     if (!confirmed) return;
 
     try {
+      const supabase = createClient();
+
       const { error } = await supabase
         .from("suppliers")
         .update({ is_active: false })
         .eq("id", id);
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
       setMessage("Supplier deactivated successfully.");
       await loadSuppliers();
@@ -202,6 +184,23 @@ export default function SuppliersPage() {
     color: "#334155",
   };
 
+  const thStyle: React.CSSProperties = {
+    padding: "14px 16px",
+    textAlign: "left",
+    background: "#f8fafc",
+    color: "#334155",
+    fontSize: "13px",
+    fontWeight: 800,
+    borderBottom: "1px solid #e2e8f0",
+  };
+
+  const tdStyle: React.CSSProperties = {
+    padding: "16px",
+    color: "#334155",
+    borderBottom: "1px solid #e2e8f0",
+    background: "#ffffff",
+  };
+
   return (
     <main
       style={{
@@ -211,12 +210,7 @@ export default function SuppliersPage() {
         color: "#0f172a",
       }}
     >
-      <div
-        style={{
-          maxWidth: "1200px",
-          margin: "0 auto",
-        }}
-      >
+      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
         {/* Header */}
         <div
           style={{
@@ -336,8 +330,7 @@ export default function SuppliersPage() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns:
-                  "repeat(auto-fit, minmax(220px, 1fr))",
+                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
                 gap: "18px",
               }}
             >
@@ -497,12 +490,7 @@ export default function SuppliersPage() {
                 textAlign: "center",
               }}
             >
-              <div
-                style={{
-                  fontSize: "40px",
-                  marginBottom: "10px",
-                }}
-              >
+              <div style={{ fontSize: "40px", marginBottom: "10px" }}>
                 🏢
               </div>
 
@@ -536,103 +524,13 @@ export default function SuppliersPage() {
               >
                 <thead>
                   <tr>
-                    <th
-                      style={{
-                        padding: "14px 16px",
-                        textAlign: "left",
-                        background: "#f8fafc",
-                        color: "#334155",
-                        fontSize: "13px",
-                        fontWeight: 800,
-                        borderBottom: "1px solid #e2e8f0",
-                      }}
-                    >
-                      Supplier
-                    </th>
-
-                    <th
-                      style={{
-                        padding: "14px 16px",
-                        textAlign: "left",
-                        background: "#f8fafc",
-                        color: "#334155",
-                        fontSize: "13px",
-                        fontWeight: 800,
-                        borderBottom: "1px solid #e2e8f0",
-                      }}
-                    >
-                      Contact
-                    </th>
-
-                    <th
-                      style={{
-                        padding: "14px 16px",
-                        textAlign: "left",
-                        background: "#f8fafc",
-                        color: "#334155",
-                        fontSize: "13px",
-                        fontWeight: 800,
-                        borderBottom: "1px solid #e2e8f0",
-                      }}
-                    >
-                      Phone
-                    </th>
-
-                    <th
-                      style={{
-                        padding: "14px 16px",
-                        textAlign: "left",
-                        background: "#f8fafc",
-                        color: "#334155",
-                        fontSize: "13px",
-                        fontWeight: 800,
-                        borderBottom: "1px solid #e2e8f0",
-                      }}
-                    >
-                      Email
-                    </th>
-
-                    <th
-                      style={{
-                        padding: "14px 16px",
-                        textAlign: "left",
-                        background: "#f8fafc",
-                        color: "#334155",
-                        fontSize: "13px",
-                        fontWeight: 800,
-                        borderBottom: "1px solid #e2e8f0",
-                      }}
-                    >
-                      Payment Terms
-                    </th>
-
-                    <th
-                      style={{
-                        padding: "14px 16px",
-                        textAlign: "left",
-                        background: "#f8fafc",
-                        color: "#334155",
-                        fontSize: "13px",
-                        fontWeight: 800,
-                        borderBottom: "1px solid #e2e8f0",
-                      }}
-                    >
-                      Status
-                    </th>
-
-                    <th
-                      style={{
-                        padding: "14px 16px",
-                        textAlign: "left",
-                        background: "#f8fafc",
-                        color: "#334155",
-                        fontSize: "13px",
-                        fontWeight: 800,
-                        borderBottom: "1px solid #e2e8f0",
-                      }}
-                    >
-                      Action
-                    </th>
+                    <th style={thStyle}>Supplier</th>
+                    <th style={thStyle}>Contact</th>
+                    <th style={thStyle}>Phone</th>
+                    <th style={thStyle}>Email</th>
+                    <th style={thStyle}>Payment Terms</th>
+                    <th style={thStyle}>Status</th>
+                    <th style={thStyle}>Action</th>
                   </tr>
                 </thead>
 
@@ -641,14 +539,13 @@ export default function SuppliersPage() {
                     <tr key={supplier.id}>
                       <td
                         style={{
-                          padding: "16px",
+                          ...tdStyle,
                           color: "#0f172a",
                           fontWeight: 700,
-                          borderBottom: "1px solid #e2e8f0",
-                          background: "#ffffff",
                         }}
                       >
                         {supplier.name}
+
                         {supplier.address && (
                           <div
                             style={{
@@ -663,55 +560,22 @@ export default function SuppliersPage() {
                         )}
                       </td>
 
-                      <td
-                        style={{
-                          padding: "16px",
-                          color: "#334155",
-                          borderBottom: "1px solid #e2e8f0",
-                          background: "#ffffff",
-                        }}
-                      >
+                      <td style={tdStyle}>
                         {supplier.contact_person || "—"}
                       </td>
 
-                      <td
-                        style={{
-                          padding: "16px",
-                          color: "#334155",
-                          borderBottom: "1px solid #e2e8f0",
-                          background: "#ffffff",
-                        }}
-                      >
-                        {supplier.phone || "—"}
-                      </td>
+                      <td style={tdStyle}>{supplier.phone || "—"}</td>
 
-                      <td
-                        style={{
-                          padding: "16px",
-                          color: "#334155",
-                          borderBottom: "1px solid #e2e8f0",
-                          background: "#ffffff",
-                        }}
-                      >
-                        {supplier.email || "—"}
-                      </td>
+                      <td style={tdStyle}>{supplier.email || "—"}</td>
 
-                      <td
-                        style={{
-                          padding: "16px",
-                          color: "#334155",
-                          borderBottom: "1px solid #e2e8f0",
-                          background: "#ffffff",
-                        }}
-                      >
+                      <td style={tdStyle}>
                         {supplier.payment_terms || "—"}
                       </td>
 
                       <td
                         style={{
-                          padding: "16px",
-                          borderBottom: "1px solid #e2e8f0",
-                          background: "#ffffff",
+                          ...tdStyle,
+                          color: "#0f172a",
                         }}
                       >
                         <span
@@ -733,13 +597,7 @@ export default function SuppliersPage() {
                         </span>
                       </td>
 
-                      <td
-                        style={{
-                          padding: "16px",
-                          borderBottom: "1px solid #e2e8f0",
-                          background: "#ffffff",
-                        }}
-                      >
+                      <td style={tdStyle}>
                         {supplier.is_active && (
                           <button
                             onClick={() =>
