@@ -27,20 +27,19 @@ const defaultStats: DashboardStats = {
 };
 
 const menuItems = [
-  { name: "Products", href: "/products", icon: "📦" },
-  { name: "POS Sales", href: "/pos", icon: "🛒" },
-  { name: "Inventory", href: "/inventory", icon: "📊" },
-  { name: "Stores", href: "/stores", icon: "🏪" },
-  { name: "Suppliers", href: "/suppliers", icon: "🚚" },
-  { name: "Customers", href: "/customers", icon: "👥" },
-  { name: "Purchases", href: "/purchases", icon: "🧾" },
-  { name: "Payments", href: "/payments", icon: "💳" },
-  { name: "Returns", href: "/returns", icon: "↩️" },
-  { name: "Expenses", href: "/expenses", icon: "💰" },
-  { name: "Stock Transfers", href: "/stock-transfers", icon: "🔄" },
-  { name: "AI Insights", href: "/ai-insights", icon: "🤖" },
-  { name: "Reports", href: "/reports", icon: "📈" },
-  { name: "AI Assistant", href: "/ai-assistant", icon: "✨" },
+  { name: "Products", href: "/products", icon: "📦", desc: "Catalog & pricing" },
+  { name: "POS Sales", href: "/pos", icon: "🛒", desc: "Create sales" },
+  { name: "Inventory", href: "/inventory", icon: "📊", desc: "Track stock" },
+  { name: "Stores", href: "/stores", icon: "🏪", desc: "Manage locations" },
+  { name: "Suppliers", href: "/suppliers", icon: "🚚", desc: "Supplier network" },
+  { name: "Customers", href: "/customers", icon: "👥", desc: "Customer records" },
+  { name: "Purchases", href: "/purchases", icon: "🧾", desc: "Purchase orders" },
+  { name: "Payments", href: "/payments", icon: "💳", desc: "Payment tracking" },
+  { name: "Returns", href: "/returns", icon: "↩️", desc: "Manage returns" },
+  { name: "Expenses", href: "/expenses", icon: "💰", desc: "Business expenses" },
+  { name: "Stock Transfers", href: "/stock-transfers", icon: "🔄", desc: "Move stock" },
+  { name: "AI Insights", href: "/ai-insights", icon: "🤖", desc: "Smart insights" },
+  { name: "Reports", href: "/reports", icon: "📈", desc: "Business reports" },
 ];
 
 export default function DashboardPage() {
@@ -197,148 +196,199 @@ export default function DashboardPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-950 text-white">
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        {/* Header */}
-        <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm font-medium text-cyan-400">
-              RetailPilot AI
-            </p>
+    <main className="min-h-screen bg-[#f6f8fb] text-slate-900">
+      <div className="mx-auto max-w-[1500px] px-4 py-5 sm:px-6 lg:px-8">
+        {/* TOP NAV */}
+        <header className="mb-6 rounded-3xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-950 text-xl shadow-lg">
+                🛒
+              </div>
 
-            <h1 className="mt-1 text-2xl font-bold sm:text-3xl">
-              Welcome, {userName}
-            </h1>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-600">
+                  RetailPilot AI
+                </p>
+                <h1 className="text-xl font-bold tracking-tight sm:text-2xl">
+                  Business Dashboard
+                </h1>
+              </div>
+            </div>
 
-            <p className="mt-1 text-sm text-slate-400">
-              Intelligent retail management dashboard
-            </p>
-          </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                  Account
+                </p>
+                <p className="text-sm font-semibold text-slate-700">
+                  {userName}
+                </p>
+              </div>
 
-          <div className="flex items-center gap-3">
-            <Link
-              href="/ai-assistant"
-              className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-sm font-semibold text-cyan-300 transition hover:bg-cyan-500/20"
-            >
-              ✨ AI Assistant
-            </Link>
+              <Link
+                href="/ai-assistant"
+                className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-slate-800"
+              >
+                ✨ Ask AI
+              </Link>
 
-            <button
-              onClick={loadDashboard}
-              className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-white/10"
-            >
-              ↻ Refresh
-            </button>
+              <button
+                onClick={loadDashboard}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                ↻ Refresh
+              </button>
+            </div>
           </div>
         </header>
 
-        {/* KPI Cards */}
+        {/* HERO */}
+        <section className="mb-6 overflow-hidden rounded-3xl bg-slate-950 p-6 text-white shadow-xl sm:p-8">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1.5 text-xs font-semibold text-cyan-300">
+                <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                Live business data
+              </div>
+
+              <h2 className="max-w-2xl text-3xl font-bold tracking-tight sm:text-4xl">
+                Welcome back, {userName}
+              </h2>
+
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400 sm:text-base">
+                Monitor sales, inventory, stores and business operations from
+                one intelligent retail workspace.
+              </p>
+            </div>
+
+            <Link
+              href="/reports"
+              className="w-fit rounded-xl bg-white px-5 py-3 text-sm font-bold text-slate-950 transition hover:bg-slate-100"
+            >
+              View Reports →
+            </Link>
+          </div>
+        </section>
+
+        {/* KPI */}
         <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <StatCard
-            title="Products"
+          <KpiCard
+            title="Total Products"
             value={stats.products}
             icon="📦"
             href="/products"
             loading={loading}
+            accent="cyan"
           />
 
-          <StatCard
-            title="Stores"
+          <KpiCard
+            title="Active Stores"
             value={stats.stores}
             icon="🏪"
             href="/stores"
             loading={loading}
+            accent="violet"
           />
 
-          <StatCard
+          <KpiCard
             title="Customers"
             value={stats.customers}
             icon="👥"
             href="/customers"
             loading={loading}
+            accent="blue"
           />
 
-          <StatCard
+          <KpiCard
             title="Suppliers"
             value={stats.suppliers}
             icon="🚚"
             href="/suppliers"
             loading={loading}
+            accent="amber"
           />
         </section>
 
-        {/* Business Summary */}
+        {/* BUSINESS METRICS */}
         <section className="mt-6 grid gap-4 lg:grid-cols-3">
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
-            <p className="text-sm text-slate-400">Completed Sales</p>
+          <MetricCard
+            label="Completed Sales"
+            value={loading ? "—" : stats.sales.toString()}
+            description="Completed transactions"
+            icon="🛒"
+          />
 
-            <p className="mt-2 text-3xl font-bold">
-              {loading ? "—" : stats.sales}
-            </p>
+          <MetricCard
+            label="Revenue"
+            value={loading ? "—" : `₹${stats.revenue.toFixed(2)}`}
+            description="From completed sales"
+            icon="₹"
+            highlight
+          />
 
-            <p className="mt-2 text-xs text-slate-500">
-              Total completed transactions
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
-            <p className="text-sm text-slate-400">Revenue</p>
-
-            <p className="mt-2 text-3xl font-bold text-emerald-400">
-              {loading ? "—" : `₹${stats.revenue.toFixed(2)}`}
-            </p>
-
-            <p className="mt-2 text-xs text-slate-500">
-              From completed sales
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
-            <p className="text-sm text-slate-400">Stock Units</p>
-
-            <p className="mt-2 text-3xl font-bold text-cyan-400">
-              {loading ? "—" : Math.round(stats.stockUnits)}
-            </p>
-
-            <p className="mt-2 text-xs text-slate-500">
-              Current inventory quantity
-            </p>
-          </div>
+          <MetricCard
+            label="Stock Units"
+            value={loading ? "—" : Math.round(stats.stockUnits).toString()}
+            description="Current inventory quantity"
+            icon="📦"
+          />
         </section>
 
-        {/* Low Stock Alert */}
-        <section className="mt-6 rounded-2xl border border-white/10 bg-white/[0.04] p-5">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-semibold text-slate-300">
-                Inventory Health
-              </p>
+        {/* INVENTORY HEALTH */}
+        <section className="mt-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-xl">
+                {stats.lowStock > 0 ? "⚠️" : "✓"}
+              </div>
 
-              <h2 className="mt-1 text-xl font-bold">
-                {loading
-                  ? "Checking inventory..."
-                  : stats.lowStock > 0
-                    ? `${stats.lowStock} product${stats.lowStock > 1 ? "s" : ""} need attention`
-                    : "Inventory looks healthy"}
-              </h2>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Inventory Health
+                </p>
+
+                <h2 className="mt-1 text-xl font-bold text-slate-900">
+                  {loading
+                    ? "Checking inventory..."
+                    : stats.lowStock > 0
+                      ? `${stats.lowStock} product${
+                          stats.lowStock > 1 ? "s" : ""
+                        } need attention`
+                      : "Inventory is healthy"}
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  {stats.lowStock > 0
+                    ? "Review low-stock products and reorder levels."
+                    : "No products are currently below their reorder level."}
+                </p>
+              </div>
             </div>
 
             <Link
               href="/inventory"
-              className="rounded-xl bg-cyan-500 px-4 py-2 text-center text-sm font-bold text-slate-950 transition hover:bg-cyan-400"
+              className="rounded-xl bg-slate-950 px-5 py-3 text-center text-sm font-bold text-white transition hover:bg-slate-800"
             >
-              Open Inventory
+              Open Inventory →
             </Link>
           </div>
         </section>
 
-        {/* Modules */}
+        {/* QUICK ACTIONS */}
         <section className="mt-8">
-          <div className="mb-4">
-            <h2 className="text-xl font-bold">Retail Modules</h2>
-            <p className="mt-1 text-sm text-slate-400">
-              Manage your complete supermarket workflow
-            </p>
+          <div className="mb-4 flex items-end justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-cyan-600">
+                Workspace
+              </p>
+              <h2 className="mt-1 text-2xl font-bold tracking-tight">
+                Quick Actions
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Access your retail operations quickly.
+              </p>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
@@ -346,40 +396,44 @@ export default function DashboardPage() {
               <Link
                 key={item.href}
                 href={item.href}
-                className="group rounded-2xl border border-white/10 bg-white/[0.04] p-4 transition hover:-translate-y-1 hover:border-cyan-400/30 hover:bg-white/[0.07]"
+                className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition duration-200 hover:-translate-y-1 hover:border-cyan-300 hover:shadow-md"
               >
-                <div className="text-2xl">{item.icon}</div>
+                <div className="flex items-center justify-between">
+                  <span className="text-2xl">{item.icon}</span>
+                  <span className="text-slate-300 transition group-hover:text-cyan-500">
+                    →
+                  </span>
+                </div>
 
-                <p className="mt-3 text-sm font-semibold text-slate-200 group-hover:text-white">
+                <p className="mt-4 text-sm font-bold text-slate-800">
                   {item.name}
                 </p>
 
-                <p className="mt-1 text-xs text-slate-500">
-                  Open module →
-                </p>
+                <p className="mt-1 text-xs text-slate-400">{item.desc}</p>
               </Link>
             ))}
           </div>
         </section>
 
-        {/* AI Recommendation */}
-        <section className="mt-8 rounded-2xl border border-cyan-400/20 bg-gradient-to-br from-cyan-500/10 to-blue-500/5 p-5">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-cyan-400">
-                AI Intelligence
-              </p>
+        {/* AI SECTION */}
+        <section className="mt-8 overflow-hidden rounded-3xl border border-cyan-100 bg-gradient-to-br from-white via-cyan-50/60 to-blue-50 p-6 shadow-sm sm:p-8">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+            <div className="max-w-3xl">
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-bold text-cyan-700 shadow-sm">
+                🤖 AI Intelligence
+              </div>
 
-              <h2 className="mt-1 text-lg font-bold">
-                Ask RetailPilot AI about your business
+              <h2 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+                Make smarter retail decisions with RetailPilot AI
               </h2>
 
-              <p className="mt-1 max-w-2xl text-sm text-slate-400">
-                Get live insights about profitability, low stock, supplier
-                payments and business performance.
+              <p className="mt-3 text-sm leading-6 text-slate-600">
+                Ask about profitability, low stock, supplier outstanding,
+                dead stock and overall business performance using your live
+                business data.
               </p>
 
-              <p className="mt-3 text-xs text-slate-500">
+              <p className="mt-4 text-xs text-slate-400">
                 AI-generated recommendation. Verify important business
                 decisions against your live records.
               </p>
@@ -387,51 +441,111 @@ export default function DashboardPage() {
 
             <Link
               href="/ai-assistant"
-              className="whitespace-nowrap rounded-xl border border-cyan-400/30 bg-cyan-400/10 px-5 py-3 text-sm font-bold text-cyan-300 transition hover:bg-cyan-400/20"
+              className="w-fit rounded-xl bg-slate-950 px-6 py-3.5 text-sm font-bold text-white shadow-lg transition hover:bg-slate-800"
             >
-              Ask AI →
+              Open AI Assistant →
             </Link>
           </div>
         </section>
 
-        {/* Footer */}
-        <footer className="mt-10 border-t border-white/10 pt-5 text-center text-xs text-slate-600">
-          RetailPilot AI · Intelligent Retail Management SaaS
+        {/* FOOTER */}
+        <footer className="mt-10 border-t border-slate-200 py-6 text-center">
+          <p className="text-xs font-semibold text-slate-400">
+            RetailPilot AI · Intelligent Retail Management SaaS
+          </p>
+          <p className="mt-1 text-[11px] text-slate-300">
+            Multi-tenant retail operations · Inventory · Sales · AI Insights
+          </p>
         </footer>
       </div>
     </main>
   );
 }
 
-function StatCard({
+function KpiCard({
   title,
   value,
   icon,
   href,
   loading,
+  accent,
 }: {
   title: string;
   value: number;
   icon: string;
   href: string;
   loading: boolean;
+  accent: "cyan" | "violet" | "blue" | "amber";
 }) {
+  const accentClasses = {
+    cyan: "bg-cyan-50 text-cyan-700",
+    violet: "bg-violet-50 text-violet-700",
+    blue: "bg-blue-50 text-blue-700",
+    amber: "bg-amber-50 text-amber-700",
+  };
+
   return (
     <Link
       href={href}
-      className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 transition hover:-translate-y-1 hover:border-cyan-400/30 hover:bg-white/[0.07]"
+      className="group rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition duration-200 hover:-translate-y-1 hover:shadow-md"
     >
-      <div className="flex items-center justify-between">
-        <span className="text-2xl">{icon}</span>
+      <div className="flex items-start justify-between">
+        <div
+          className={`flex h-11 w-11 items-center justify-center rounded-2xl text-xl ${accentClasses[accent]}`}
+        >
+          {icon}
+        </div>
 
-        <span className="text-xs text-slate-500">View →</span>
+        <span className="text-xs font-semibold text-slate-300 transition group-hover:text-cyan-500">
+          View →
+        </span>
       </div>
 
-      <p className="mt-4 text-sm text-slate-400">{title}</p>
+      <p className="mt-5 text-sm font-medium text-slate-500">{title}</p>
 
-      <p className="mt-1 text-2xl font-bold">
+      <p className="mt-1 text-3xl font-bold tracking-tight text-slate-900">
         {loading ? "—" : value}
       </p>
     </Link>
+  );
+}
+
+function MetricCard({
+  label,
+  value,
+  description,
+  icon,
+  highlight = false,
+}: {
+  label: string;
+  value: string;
+  description: string;
+  icon: string;
+  highlight?: boolean;
+}) {
+  return (
+    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+            {label}
+          </p>
+
+          <p
+            className={`mt-2 text-3xl font-bold tracking-tight ${
+              highlight ? "text-emerald-600" : "text-slate-900"
+            }`}
+          >
+            {value}
+          </p>
+
+          <p className="mt-1 text-xs text-slate-400">{description}</p>
+        </div>
+
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-50 text-lg font-bold text-slate-600">
+          {icon}
+        </div>
+      </div>
+    </div>
   );
 }
