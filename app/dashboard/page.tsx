@@ -232,8 +232,13 @@ export default function Dashboard() {
 
       setTodayRevenue(todaysRevenue);
     } catch (err) {
-      console.error(err);
-      setError("Unable to load dashboard data.");
+  console.error("Dashboard error:", err);
+
+  const message =
+    err instanceof Error ? err.message : String(err);
+
+  setError(`Dashboard error: ${message}`);
+
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -689,7 +694,7 @@ export default function Dashboard() {
               {stores.length}
             </p>
             <p className="mt-1 text-xs text-blue-600">
-              Manage locations →
+            
             </p>
           </Link>
 
