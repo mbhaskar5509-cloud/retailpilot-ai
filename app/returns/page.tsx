@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client"
 
 type Sale = {
   id: string
-  invoice_no: string | null
+  invoice_number: string | null
   total_amount: number
   created_at: string
 }
@@ -18,7 +18,7 @@ type ReturnRecord = {
   total_amount: number
   created_at: string
   sale?: {
-    invoice_no: string | null
+    invoice_number: string | null
   } | null
 }
 
@@ -72,49 +72,55 @@ export default function ReturnsPage() {
       const supabase = createClient()
       const tenantId = await getTenantId()
 
-      const { data: returnData, error: returnError } = await supabase
-        .from("returns")
-        .select(
-          `
-          id,
-          sale_id,
-          return_type,
-          reason,
-          total_amount,
-          created_at,
-          sale:sales!returns_sale_id_fkey(invoice_no)
-        `
-        )
-        .eq("tenant_id", tenantId)
-        .order("created_at", { ascending: false })
+      const { data: returnData, error: returnError } =
+        await supabase
+          .from("returns")
+          .select(`
+            id,
+            sale_id,
+            return_type,
+            reason,
+            total_amount,
+            created_at,
+            sale:sales!returns_sale_id_fkey(invoice_number)
+          `)
+          .eq("tenant_id", tenantId)
+          .order("created_at", { ascending: false })
 
       if (returnError) {
         throw returnError
       }
 
-      const { data: salesData, error: salesError } = await supabase
-        .from("sales")
-        .select("id, invoice_no, total_amount, created_at")
-        .eq("tenant_id", tenantId)
-        .eq("status", "completed")
-        .order("created_at", { ascending: false })
+      const { data: salesData, error: salesError } =
+        await supabase
+          .from("sales")
+          .select(
+            "id, invoice_number, total_amount, created_at"
+          )
+          .eq("tenant_id", tenantId)
+          .eq("status", "completed")
+          .order("created_at", { ascending: false })
 
       if (salesError) {
         throw salesError
       }
 
-      const formattedReturns = (returnData || []).map((item: any) => ({
-        ...item,
-        sale: Array.isArray(item.sale)
-          ? item.sale[0] || null
-          : item.sale || null,
-      }))
+      const formattedReturns = (returnData || []).map(
+        (item: any) => ({
+          ...item,
+          sale: Array.isArray(item.sale)
+            ? item.sale[0] || null
+            : item.sale || null,
+        })
+      )
 
       setReturns(formattedReturns)
       setSales(salesData || [])
     } catch (err: any) {
       console.error(err)
-      setError(err?.message || "Unable to load returns.")
+      setError(
+        err?.message || "Unable to load returns."
+      )
     } finally {
       setLoading(false)
     }
@@ -134,28 +140,36 @@ export default function ReturnsPage() {
       const returnAmount = Number(amount)
 
       if (!returnAmount || returnAmount <= 0) {
-        setError("Return amount must be greater than zero.")
+        setError(
+          "Return amount must be greater than zero."
+        )
         return
       }
 
-      const selectedSale = sales.find((sale) => sale.id === saleId)
+      const selectedSale = sales.find(
+        (sale) => sale.id === saleId
+      )
 
       if (!selectedSale) {
         setError("Selected sale not found.")
         return
       }
 
-      if (returnAmount > Number(selectedSale.total_amount)) {
-        setError("Return amount cannot exceed the sale amount.")
+      if (
+        returnAmount >
+        Number(selectedSale.total_amount)
+      ) {
+        setError(
+          "Return amount cannot exceed the sale amount."
+        )
         return
       }
 
       const supabase = createClient()
       const tenantId = await getTenantId()
 
-      const { error: insertError } = await supabase
-        .from("returns")
-        .insert({
+      const { error: insertError } =
+        await supabase.from("returns").insert({
           tenant_id: tenantId,
           sale_id: saleId,
           return_type: returnType,
@@ -167,7 +181,10 @@ export default function ReturnsPage() {
         throw insertError
       }
 
-      setMessage("Return created successfully.")
+      setMessage(
+        "Return created successfully."
+      )
+
       setSaleId("")
       setReturnType("customer_return")
       setReason("")
@@ -176,7 +193,9 @@ export default function ReturnsPage() {
       await loadData()
     } catch (err: any) {
       console.error(err)
-      setError(err?.message || "Unable to create return.")
+      setError(
+        err?.message || "Unable to create return."
+      )
     } finally {
       setSaving(false)
     }
@@ -209,7 +228,8 @@ export default function ReturnsPage() {
             </h1>
 
             <p className="mt-2 text-sm text-slate-400">
-              Manage customer and supplier returns with a clear audit trail.
+              Manage customer and supplier returns
+              with a clear audit trail.
             </p>
           </div>
 
@@ -251,11 +271,14 @@ export default function ReturnsPage() {
                   setSaleId(e.target.value)
 
                   const sale = sales.find(
-                    (item) => item.id === e.target.value
+                    (item) =>
+                      item.id === e.target.value
                   )
 
                   if (sale) {
-                    setAmount(String(sale.total_amount))
+                    setAmount(
+                      String(sale.total_amount)
+                    )
                   }
                 }}
                 className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white outline-none focus:border-cyan-500"
@@ -265,9 +288,16 @@ export default function ReturnsPage() {
                 </option>
 
                 {sales.map((sale) => (
-                  <option key={sale.id} value={sale.id}>
-                    {sale.invoice_no || sale.id.slice(0, 8)} — ₹
-                    {Number(sale.total_amount).toFixed(2)}
+                  <option
+                    key={sale.id}
+                    value={sale.id}
+                  >
+                    {sale.invoice_number ||
+                      sale.id.slice(0, 8)}{" "}
+                    — ₹
+                    {Number(
+                      sale.total_amount
+                    ).toFixed(2)}
                   </option>
                 ))}
               </select>
@@ -280,7 +310,9 @@ export default function ReturnsPage() {
 
               <select
                 value={returnType}
-                onChange={(e) => setReturnType(e.target.value)}
+                onChange={(e) =>
+                  setReturnType(e.target.value)
+                }
                 className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white outline-none focus:border-cyan-500"
               >
                 <option value="customer_return">
@@ -307,7 +339,9 @@ export default function ReturnsPage() {
                 min="0"
                 step="0.01"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onChange={(e) =>
+                  setAmount(e.target.value)
+                }
                 placeholder="0.00"
                 className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white placeholder:text-slate-600 outline-none focus:border-cyan-500"
               />
@@ -320,7 +354,9 @@ export default function ReturnsPage() {
 
               <input
                 value={reason}
-                onChange={(e) => setReason(e.target.value)}
+                onChange={(e) =>
+                  setReason(e.target.value)
+                }
                 placeholder="Reason for return"
                 className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-white placeholder:text-slate-600 outline-none focus:border-cyan-500"
               />
@@ -335,7 +371,9 @@ export default function ReturnsPage() {
               disabled={saving}
               className="rounded-xl bg-cyan-500 px-6 py-3 font-semibold text-slate-950 hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {saving ? "Creating..." : "Create Return"}
+              {saving
+                ? "Creating..."
+                : "Create Return"}
             </button>
           </div>
         </section>
@@ -383,11 +421,16 @@ export default function ReturnsPage() {
                             item.return_type
                           )}`}
                         >
-                          {item.return_type.replace("_", " ")}
+                          {item.return_type.replace(
+                            "_",
+                            " "
+                          )}
                         </span>
 
                         <span className="text-xs text-slate-500">
-                          {new Date(item.created_at).toLocaleString("en-IN")}
+                          {new Date(
+                            item.created_at
+                          ).toLocaleString("en-IN")}
                         </span>
 
                       </div>
@@ -398,7 +441,9 @@ export default function ReturnsPage() {
                         </span>
 
                         <span className="font-semibold">
-                          {item.sale?.invoice_no || "N/A"}
+                          {item.sale
+                            ?.invoice_number ||
+                            "N/A"}
                         </span>
                       </div>
 
@@ -415,7 +460,10 @@ export default function ReturnsPage() {
                       </p>
 
                       <p className="mt-1 text-2xl font-bold text-orange-400">
-                        ₹{Number(item.total_amount).toFixed(2)}
+                        ₹
+                        {Number(
+                          item.total_amount
+                        ).toFixed(2)}
                       </p>
                     </div>
 
@@ -453,7 +501,8 @@ export default function ReturnsPage() {
                 {
                   returns.filter(
                     (item) =>
-                      item.return_type === "customer_return"
+                      item.return_type ===
+                      "customer_return"
                   ).length
                 }
               </p>
@@ -469,7 +518,10 @@ export default function ReturnsPage() {
                 {returns
                   .reduce(
                     (sum, item) =>
-                      sum + Number(item.total_amount || 0),
+                      sum +
+                      Number(
+                        item.total_amount || 0
+                      ),
                     0
                   )
                   .toFixed(2)}
