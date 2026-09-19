@@ -34,7 +34,7 @@ export async function GET() {
 
     const { data: sales, error: salesError } = await supabase
       .from("sales")
-      .select("id, total_amount, payment_status, status, created_at")
+      .select("id, total_amount, status, created_at")
       .eq("tenant_id", tenantId)
       .order("created_at", { ascending: false });
 
@@ -54,15 +54,18 @@ export async function GET() {
     );
 
     const completedSales = todaySales.filter(
-      (sale) =>
-        sale.status === "completed" ||
-        sale.payment_status === "paid"
+      (sale) => sale.status === "completed"
     );
 
     const totalSales = completedSales.reduce(
       (sum, sale) => sum + Number(sale.total_amount ?? 0),
       0
     );
+
+    const averageTransactionValue =
+      completedSales.length > 0
+        ? totalSales / completedSales.length
+        : 0;
 
     return NextResponse.json({
       success: true,
@@ -71,10 +74,7 @@ export async function GET() {
       date: today.toISOString().split("T")[0],
       total_transactions: completedSales.length,
       total_sales: totalSales,
-      average_transaction_value:
-        completedSales.length > 0
-          ? totalSales / completedSales.length
-          : 0,
+      average_transaction_value: averageTransactionValue,
       message:
         completedSales.length > 0
           ? "Daily EOD sales dossier generated successfully."
