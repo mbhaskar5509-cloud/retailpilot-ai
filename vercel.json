@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/automations/low-stock",
+      "schedule": "0 9 * * *"
+    }
+  ]
+}
