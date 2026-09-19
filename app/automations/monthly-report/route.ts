@@ -34,7 +34,7 @@ export async function GET() {
 
     const { data: sales, error: salesError } = await supabase
       .from("sales")
-      .select("total_amount, status, payment_status, created_at")
+      .select("total_amount, status, created_at")
       .eq("tenant_id", tenantId);
 
     if (salesError) {
@@ -57,6 +57,7 @@ export async function GET() {
     }
 
     const now = new Date();
+
     const monthStart = new Date(
       now.getFullYear(),
       now.getMonth(),
@@ -66,12 +67,12 @@ export async function GET() {
     const monthlySales = (sales ?? []).filter(
       (sale) =>
         new Date(sale.created_at) >= monthStart &&
-        (sale.status === "completed" ||
-          sale.payment_status === "paid")
+        sale.status === "completed"
     );
 
     const monthlyExpenses = (expenses ?? []).filter(
-      (expense) => new Date(expense.created_at) >= monthStart
+      (expense) =>
+        new Date(expense.created_at) >= monthStart
     );
 
     const revenue = monthlySales.reduce(
