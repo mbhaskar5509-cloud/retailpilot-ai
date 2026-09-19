@@ -11,7 +11,6 @@ type Payment = {
   payment_status: string;
   transaction_reference: string | null;
   paid_at: string | null;
-  created_at: string;
 };
 
 type Sale = {
@@ -71,10 +70,10 @@ export default function PaymentsPage() {
       const { data: paymentData, error: paymentError } = await supabase
         .from("payments")
         .select(
-          "id, sale_id, payment_method, amount, payment_status, transaction_reference, paid_at, created_at"
+          "id, sale_id, payment_method, amount, payment_status, transaction_reference, paid_at"
         )
         .eq("tenant_id", profile.tenant_id)
-        .order("created_at", { ascending: false });
+        .order("paid_at", { ascending: false });
 
       if (paymentError) {
         throw paymentError;
@@ -83,8 +82,7 @@ export default function PaymentsPage() {
       const { data: salesData, error: salesError } = await supabase
         .from("sales")
         .select("id, invoice_number, total_amount")
-        .eq("tenant_id", profile.tenant_id)
-        .order("created_at", { ascending: false });
+        .eq("tenant_id", profile.tenant_id);
 
       if (salesError) {
         throw salesError;
@@ -127,7 +125,10 @@ export default function PaymentsPage() {
         payment_status: paymentStatus,
         transaction_reference:
           transactionReference.trim() || null,
-        paid_at: paymentStatus === "paid" ? new Date().toISOString() : null,
+        paid_at:
+          paymentStatus === "paid"
+            ? new Date().toISOString()
+            : null,
       });
 
       if (error) {
@@ -156,11 +157,17 @@ export default function PaymentsPage() {
 
   const totalPaid = payments
     .filter((payment) => payment.payment_status === "paid")
-    .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+    .reduce(
+      (sum, payment) => sum + Number(payment.amount || 0),
+      0
+    );
 
   const pendingAmount = payments
     .filter((payment) => payment.payment_status !== "paid")
-    .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+    .reduce(
+      (sum, payment) => sum + Number(payment.amount || 0),
+      0
+    );
 
   return (
     <main className="min-h-screen bg-slate-50 p-4 text-slate-900 md:p-8">
@@ -375,10 +382,7 @@ export default function PaymentsPage() {
                       </td>
 
                       <td className="px-5 py-4 capitalize">
-                        {payment.payment_method.replace(
-                          "_",
-                          " "
-                        )}
+                        {payment.payment_method.replace("_", " ")}
                       </td>
 
                       <td className="px-5 py-4 font-semibold">
@@ -390,8 +394,7 @@ export default function PaymentsPage() {
                           className={`rounded-full px-3 py-1 text-xs font-semibold ${
                             payment.payment_status === "paid"
                               ? "bg-emerald-100 text-emerald-700"
-                              : payment.payment_status ===
-                                "pending"
+                              : payment.payment_status === "pending"
                               ? "bg-orange-100 text-orange-700"
                               : "bg-red-100 text-red-700"
                           }`}
